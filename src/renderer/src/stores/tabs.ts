@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
-// Per-tab upstream proxy. Mirrors main/tab-proxy.ts TabProxyConfig. Held in
-// memory only (tabs aren't persisted), so it resets on restart.
+// Tab and profile metadata only. Cookies/session contents remain owned by the
+// Chromium partition, never copied to localStorage by Nightnova.
 export interface ProxyConfig {
   enabled: boolean
   scheme: 'http' | 'https' | 'socks5'
@@ -16,25 +16,15 @@ export interface Tab {
   url: string
   title: string
   webContentsId: number | null
-  // Set when the tab is first created. Used as the webview's `src` exactly
-  // once — afterwards the user/AI drives navigation via loadURL on the ref,
-  // so React doesn't re-mount the webview.
   initialUrl: string
-  // Undefined = direct connection (default).
   proxy?: ProxyConfig
-  // Isolated session partition (proxy or non-default profile tabs). Undefined =
-  // the shared persist:rever-shared partition. Set once at creation — a
-  // webview's partition cannot change after mount.
   partition?: string
-  // Which named profile this tab browses under. Undefined / 'default' = the
-  // Default (shared) profile. Used for the tab-bar label.
   profileId?: string
 }
 
 interface TabsState {
   tabs: Tab[]
   activeId: string
-
   addTab: (
     url: string,
     opts?: {
@@ -51,60 +41,124 @@ interface TabsState {
   setTabProxy: (id: string, proxy: ProxyConfig | undefined) => void
 }
 
-const INITIAL_URL = 'https://github.com/greekr4/rever-browser'
+const INITIAL_URL = 'https://github.com/neoflowcore/NightNova'
+const STORAGE_KEY = 'nightnova:tabs:v1'
+const MAX_SAVED_TABS = 15
+const MAX_CLOSED_TABS = 20
 
 let nextId = 1
-const newId = (): string => `t${nextId++}`
-
-// URLs of recently closed tabs, newest last — backs Cmd/Ctrl+Shift+T.
+const newId = (): string => 't' + nextId++
 const closedUrls: string[] = []
 
-const firstId = newId()
+const safeRestoreUrl = (value: unknown): value is string =>
+  typeof value === 'string' && value.length < 2048 &&
+  /^(?:https?:\/\/|about:blank$)/i.test(value)
+
+// Do not restore ephemeral partitions or proxy credentials. A restored tab
+// creates a NEW Electron webContents with the same persistent profile data.
+function restoredTab(data: unknown): Tab | null {
+  if (!data || typeof data !== 'object') return null
+  const raw = data as Record<string, unknown>
+  if (!safeRestoreUrl(raw.url) || typeof raw.id !== 'string' || !/^t\d+$/.test(raw.id)) {
+    return null
+  }
+  if (raw.partition && (typeof raw.partition !== 'string' ||
+    !raw.partition.startsWith('persist:'))) return null
+  return {
+    id: raw.id,
+    url: raw.url,
+    initialUrl: raw.url,
+    title: typeof raw.title === 'string' ? raw.title.slice(0, 150) : 'Restored Tab',
+    webContentsId: null,
+    partition: typeof raw.partition === 'string' ? raw.partition : undefined,
+    profileId: typeof raw.profileId === 'string' ? raw.profileId.slice(0, 150) : undefined
+  }
+}
+
+function loadSaved(): { tabs: Tab[]; activeId: string } | null {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
+    if (!raw || typeof raw !== 'object') return null
+    const snapshot = raw as { tabs?: unknown; activeId?: unknown; closedUrls?: unknown }
+    if (!Array.isArray(snapshot.tabs) || snapshot.tabs.length < 1) return null
+    const seen = new Set<string>()
+    const tabs = snapshot.tabs.slice(0, MAX_SAVED_TABS).map(restoredTab)
+      .filter((t): t is Tab => {
+        if (!t || seen.has(t.id)) return false
+        seen.add(t.id)
+        return true
+      })
+    if (!tabs.length) return null
+    nextId = Math.max(...tabs.map((t) => Number(t.id.slice(1))), 0) + 1
+    if (Array.isArray(snapshot.closedUrls)) {
+      closedUrls.push(...snapshot.closedUrls.filter(safeRestoreUrl).slice(-MAX_CLOSED_TABS))
+    }
+    const activeId = typeof snapshot.activeId === 'string' &&
+      tabs.some((t) => t.id === snapshot.activeId)
+      ? snapshot.activeId : tabs[0].id
+    return { tabs, activeId }
+  } catch {
+    return null
+  }
+}
+
+function persistTabs(state: Pick<TabsState, 'tabs' | 'activeId'>): void {
+  try {
+    const tabs = state.tabs
+      .filter((t) => !t.proxy && (!t.partition || t.partition.startsWith('persist:')) &&
+        safeRestoreUrl(t.url))
+      .slice(-MAX_SAVED_TABS)
+      .map(({ id, url, title, partition, profileId }) => ({ id, url, title, partition, profileId }))
+    if (!tabs.length) return
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      tabs, activeId: tabs.some((t) => t.id === state.activeId) ? state.activeId : tabs[0].id,
+      closedUrls: closedUrls.slice(-MAX_CLOSED_TABS)
+    }))
+  } catch { /* Storage errors must not break tab navigation. */ }
+}
+
+const saved = loadSaved()
+const firstId = saved?.activeId ?? newId()
+const initialTabs = saved?.tabs ?? [{
+  id: firstId, url: INITIAL_URL, title: 'Nightnova',
+  webContentsId: null, initialUrl: INITIAL_URL
+}]
 
 export const useTabsStore = create<TabsState>((set, get) => ({
-  tabs: [
-    {
-      id: firstId,
-      url: INITIAL_URL,
-      title: 'New Tab',
-      webContentsId: null,
-      initialUrl: INITIAL_URL
-    }
-  ],
+  tabs: initialTabs,
   activeId: firstId,
 
   addTab: (url, opts) => {
     const id = newId()
     const tab: Tab = {
-      id,
-      url,
-      title: 'New Tab',
-      webContentsId: null,
-      initialUrl: url,
-      proxy: opts?.proxy,
-      partition: opts?.partition,
-      profileId: opts?.profileId
+      id, url, title: 'New Tab', webContentsId: null, initialUrl: url,
+      proxy: opts?.proxy, partition: opts?.partition, profileId: opts?.profileId
     }
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeId: opts?.activate === false ? s.activeId : id
     }))
+    persistTabs(get())
     return id
   },
 
   closeTab: (id) => {
     const { tabs, activeId } = get()
-    if (tabs.length === 1) return // never close the last tab
-    const idx = tabs.findIndex((t) => t.id === id)
+    if (tabs.length <= 1) return
+    const idx = tabs.findIndex((tab) => tab.id === id)
     if (idx < 0) return
-    closedUrls.push(tabs[idx].url)
-    const next = tabs.filter((t) => t.id !== id)
+    if (!tabs[idx].proxy && safeRestoreUrl(tabs[idx].url)) {
+      closedUrls.push(tabs[idx].url)
+      if (closedUrls.length > MAX_CLOSED_TABS) closedUrls.shift()
+    }
+    const next = tabs.filter((tab) => tab.id !== id)
     let nextActive = activeId
     if (activeId === id) {
-      const neighbour = next[idx] ?? next[idx - 1] ?? next[0]
-      nextActive = neighbour.id
+      const neighbor = next[idx] ?? next[idx - 1] ?? next[0]
+      nextActive = neighbor.id
     }
     set({ tabs: next, activeId: nextActive })
+    persistTabs(get())
   },
 
   reopenTab: () => {
@@ -113,19 +167,22 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   selectTab: (id) => {
-    if (!get().tabs.some((t) => t.id === id)) return
+    if (!get().tabs.some((tab) => tab.id === id)) return
     set({ activeId: id })
+    persistTabs(get())
   },
 
   updateTab: (id, patch) => {
     set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t))
+      tabs: s.tabs.map((tab) => tab.id === id ? { ...tab, ...patch } : tab)
     }))
+    persistTabs(get())
   },
 
   setTabProxy: (id, proxy) => {
     set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === id ? { ...t, proxy } : t))
+      tabs: s.tabs.map((tab) => tab.id === id ? { ...tab, proxy } : tab)
     }))
+    persistTabs(get())
   }
 }))

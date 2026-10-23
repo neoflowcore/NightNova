@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CliCommand, CliData } from '../shared/cli-spec'
 import type { PageEvent } from '../main/ai-events'
 import type { DownloadRecord } from '../main/downloads'
-import type { NightnovaConfig, NightnovaSnapshot } from '../shared/nightnova'
+import type { NightnovaConfig, NightnovaDoctor, NightnovaSnapshot, NightnovaTaskTemplate } from '../shared/nightnova'
 
 export type { PageEvent, DownloadRecord }
 
@@ -233,7 +233,13 @@ const api = {
     state: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:state'),
     chooseWorkspace: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:choose-workspace'),
     configure: (patch: Partial<NightnovaConfig>): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:configure', patch),
-    enqueue: (instruction: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:enqueue', instruction),
+    enqueue: (instruction: string, expectChanges = true): Promise<NightnovaSnapshot> =>
+      ipcRenderer.invoke('nightnova:enqueue', instruction, expectChanges),
+    enqueueMany: (items: Array<{ instruction: string; expectChanges?: boolean }>): Promise<NightnovaSnapshot> =>
+      ipcRenderer.invoke('nightnova:enqueue-many', items),
+    templates: (): Promise<NightnovaTaskTemplate[]> => ipcRenderer.invoke('nightnova:templates'),
+    enqueueTemplate: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:enqueue-template', id),
+    retry: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:retry', id),
     remove: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:remove', id),
     move: (id: string, delta: number): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:move', id, delta),
     start: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:start'),
@@ -242,6 +248,9 @@ const api = {
     restore: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:restore'),
     reset: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:reset'),
     git: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:git'),
+    doctor: (): Promise<NightnovaDoctor> => ipcRenderer.invoke('nightnova:doctor'),
+    handoff: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:handoff'),
+    showHandoff: (): Promise<boolean> => ipcRenderer.invoke('nightnova:show-handoff'),
     onState: (handler: (snapshot: NightnovaSnapshot) => void): (() => void) => {
       const listener = (_event: unknown, snapshot: NightnovaSnapshot) => handler(snapshot)
       ipcRenderer.on('nightnova:state', listener)

@@ -31,3 +31,22 @@
 .nightnova-task p { overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.4; margin: 6px 0; }
 .nightnova-error { color: #ed7373; overflow-wrap: anywhere; }
 .nightnova-log { background: var(--surface); border: 1px solid var(--border); padding: 8px; border-radius: 5px; max-height: 190px; overflow: auto; font-size: 10px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* B2: discovery, evidence, bulk queue and handoff actions. */
+.nightnova-bulk { margin-top: 12px; border: 1px solid var(--border); border-radius: 5px; padding: 9px; }
+.nightnova-bulk summary { cursor: pointer; font-weight: 600; }
+.nightnova-bulk textarea { margin-top: 10px; }
+.nightnova-doctor { border: 1px solid var(--border); border-radius: 5px; margin: 9px 0; padding: 8px; }
+.nightnova-doctor summary { cursor: pointer; font-weight: 600; }
+.nightnova-doctor-item { display: flex; flex-direction: column; border-top: 1px solid var(--border); gap: 3px; padding: 7px 2px; overflow-wrap: anywhere; }
+.nightnova-doctor-item:first-of-type { margin-top: 9px; }
+.nightnova-doctor-item strong { font-size: 11px; }
+.nightnova-doctor-item span { color: var(--text-dim); font-size: 11px; }
+.nightnova-wb-section select { max-width: 100%; }
+.nightnova-wb-section input[type=checkbox] { width: auto; }
+.nightnova-wb-line > button { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .nightnova-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .nightnova-secondary-controls { right: 4px; left: 4px; flex-wrap: wrap; width: auto; }
+  .nightnova-secondary-controls select { flex: 1; min-width: 80px; }
+}

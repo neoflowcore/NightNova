@@ -2,7 +2,7 @@
 
 **Nightnova** is a local, personal Chromium/Electron AI development browser for Windows-first workflows.
 
-> Status: B1 functional integration committed as source. A runnable Windows installer and end-to-end Codex ACP session have **not** been verified. Do not treat the code integration as a release.
+> Status: B2 development integration under Windows acceptance review. A runnable Windows installer and end-to-end Codex ACP session have **not** been verified. Do not treat the code integration as a release.
 
 ## Included
 
@@ -12,6 +12,17 @@
 - **Action Economy:** no app-generated Git commits/pushes/merges/deployments or background GitHub Actions; optional single end-of-run validation.
 - **Browser split layout:** one, two side-by-side, or two stacked embedded tabs with draggable divider; optional bottom-docked AI panel.
 - Local checkpoint and Markdown handoff artifacts; restricted tool auto-approval and read-only default.
+
+## B2 improvements
+
+- Auto-restore persisted task queue on startup, without automatically launching agents; interrupted turns require explicit review.
+- Streamed Git worktree fingerprint before/after each coding turn, bounded retries and review status on interrupted turns.
+- Environment doctor, presets, bulk queue, result evidence and local handoff controls in the workbench.
+- Local project-aware single final validation; Git diff check and optional typecheck/test/build, with cancellation.
+- Normal browser tab and split-ratio restoration; ephemeral/proxy tabs intentionally excluded.
+- Offline Windows release manifest with SHA256; optional local NSIS retention dry-run.
+
+See [B2 Windows acceptance checklist](docs/NIGHTNOVA_B2_WINDOWS_ACCEPTANCE.md). Live ACP and Windows installer verification remain outstanding.
 
 ## Start locally
 

@@ -1,12 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { NightnovaConfig, NightnovaSnapshot } from '../../../shared/nightnova'
+import type { NightnovaConfig, NightnovaSnapshot, NightnovaTaskTemplate } from '../../../shared/nightnova'
 import { nightnovaProgress, isNightnovaBusy } from '../../../shared/nightnova'
 
 function fmt(when: number | null): string {
   return when ? new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit',
+    month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-  }).format(when) + ' KST' : '-'
+  }).format(when) : '-'
 }
 
 function until(ms: number): string {
@@ -36,6 +36,10 @@ function defaultDeadline(): string {
 export function NightnovaWorkbench() {
   const [state, setState] = useState<NightnovaSnapshot | null>(null)
   const [input, setInput] = useState('')
+  const [bulkInput, setBulkInput] = useState('')
+  const [expectChanges, setExpectChanges] = useState(true)
+  const [templateId, setTemplateId] = useState('')
+  const [templates, setTemplates] = useState<NightnovaTaskTemplate[]>([])
   const [deadline, setDeadline] = useState(defaultDeadline)
   const [clock, setClock] = useState(Date.now)
   const [error, setError] = useState('')
@@ -47,6 +51,9 @@ export function NightnovaWorkbench() {
       setState(snapshot)
       if (snapshot.config.deadlineAt) setDeadline(toLocalInput(snapshot.config.deadlineAt))
     }).catch((e) => { if (live) setError(String(e)) })
+    void window.rev.nightnova.templates().then((items) => {
+      if (live) setTemplates(items)
+    }).catch(() => { /* The task UI stays usable when templates are unavailable. */ })
     const off = window.rev.nightnova.onState((snapshot) => { if (live) setState(snapshot) })
     const timer = setInterval(() => setClock(Date.now()), 1000)
     return () => { live = false; off(); clearInterval(timer) }
@@ -69,8 +76,24 @@ export function NightnovaWorkbench() {
     const text = input.trim()
     if (!text) return
     void action(async () => {
-      const next = await window.rev.nightnova.enqueue(text)
+      const next = await window.rev.nightnova.enqueue(text, expectChanges)
       setInput('')
+      return next
+    })
+  }
+
+  const addBulk = (): void => {
+    const parts = bulkInput.trim().split(/\n\s*\n/).map((chunk) => chunk.trim()).filter(Boolean)
+    if (parts.length === 0) return
+    if (parts.some((part) => part.length > 4000)) {
+      setError('개별 작업은 4,000자 이하로 작성하세요.')
+      return
+    }
+    void action(async () => {
+      const next = await window.rev.nightnova.enqueueMany(
+        parts.map((instruction) => ({ instruction, expectChanges }))
+      )
+      setBulkInput('')
       return next
     })
   }
@@ -113,8 +136,33 @@ export function NightnovaWorkbench() {
               Git 폴더 선택
             </button>
             <button type="button" disabled={active || working || !config.workspace} onClick={() => void action(() => window.rev.nightnova.git())}>Git 확인</button>
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => {
+                setError('')
+                setWorking(true)
+                void window.rev.nightnova.doctor()
+                  .then(() => window.rev.nightnova.state())
+                  .then((snapshot) => setState(snapshot))
+                  .catch((error) => setError(String(error)))
+                  .finally(() => setWorking(false))
+              }}
+            >환경 점검</button>
           </div>
           <div className="nightnova-path" title={config.workspace ?? ''}>{config.workspace ?? '작업 폴더를 선택하지 않았습니다.'}</div>
+          {state.doctor && (
+            <details className="nightnova-doctor">
+              <summary>실행 환경: {state.doctor.checks.filter((item) => item.ok).length}/{state.doctor.checks.length} 항목 확인</summary>
+              {state.doctor.checks.map((item) => (
+                <div className="nightnova-doctor-item" key={item.id}>
+                  <strong>{item.ok ? '✓' : item.required ? '✕' : '–'} {item.label}</strong>
+                  <span>{item.detail}</span>
+                </div>
+              ))}
+              <p className="nightnova-wb-note">실행 파일 확인은 로그인 성공을 보증하지 않습니다. 실제 ACP 세션은 개발 시작 시 연결합니다.</p>
+            </details>
+          )}
           <label>에이전트
             <select disabled={active || working} value={config.agent} onChange={(e) => change({ agent: e.target.value as NightnovaConfig['agent'] })}>
               <option value="codex">Codex ACP (우선)</option>
@@ -153,22 +201,76 @@ export function NightnovaWorkbench() {
         </section>
         <section className="nightnova-wb-section">
           <h4>2. 작업 큐</h4>
+          <div className="nightnova-wb-line">
+            <select
+              title="작업 템플릿"
+              aria-label="작업 템플릿 선택"
+              disabled={active || working || templates.length === 0}
+              value={templateId}
+              onChange={(event) => setTemplateId(event.target.value)}
+            >
+              <option value="">작업 템플릿 선택</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>{template.title}</option>
+              ))}
+            </select>
+            <button type="button" disabled={active || working || !templateId} onClick={() => {
+              const id = templateId
+              void action(async () => {
+                const next = await window.rev.nightnova.enqueueTemplate(id)
+                setTemplateId('')
+                return next
+              })
+            }}>템플릿 추가</button>
+          </div>
+          <label className="nightnova-wb-check">
+            <input
+              type="checkbox" disabled={active || working}
+              checked={expectChanges} onChange={(event) => setExpectChanges(event.target.checked)}
+            />
+            실제 파일 변경이 필요한 개발 작업 (해제하면 읽기 전용 분석)
+          </label>
           <form onSubmit={onAdd}>
             <textarea value={input} disabled={active || working} onChange={(e) => setInput(e.target.value)}
               rows={3} maxLength={4000} placeholder="개발할 기능과 완료 기준을 입력하세요." />
             <button type="submit" disabled={active || working || !input.trim()}>작업 추가</button>
           </form>
+          <details className="nightnova-bulk">
+            <summary>여러 작업을 한 번에 추가</summary>
+            <p className="nightnova-wb-note">빈 줄로 구분된 작업을 한 번에 대기열에 넣습니다. 총 40개까지 가능.</p>
+            <textarea
+              disabled={active || working} rows={5}
+              value={bulkInput} onChange={(e) => setBulkInput(e.target.value)}
+              placeholder={'작업 A: 로그인 흐름 수정\n\n작업 B: 분할 창 크기 복구\n\n작업 C: 실행 로그 보완'}
+            />
+            <button type="button" disabled={active || working || !bulkInput.trim()} onClick={addBulk}>
+              일괄 추가
+            </button>
+          </details>
           {state.tasks.length === 0 && <p className="nightnova-wb-note">대기 중인 작업이 없습니다.</p>}
           {state.tasks.map((task, index) => (
             <div className="nightnova-task" key={task.id}>
-              <div><strong>{index + 1}. {task.status}</strong><span> 시도 {task.attempts}</span></div>
+              <div><strong>{index + 1}. {task.status}</strong><span> 시도 {task.attempts} · {task.expectChanges !== false ? '코드 변경' : '분석'}</span></div>
               <p>{task.instruction}</p>
               {task.lastError && <small className="nightnova-error">{task.lastError}</small>}
+              {task.lastOutput && <details><summary>에이전트 결과</summary><p>{task.lastOutput}</p></details>}
+              {task.evidence && (
+                <small className="nightnova-wb-note">
+                  Git 증거: 변경 {task.evidence.dirtyFiles}개 · {task.evidence.samplePaths.slice(0, 3).join(', ')}
+                </small>
+              )}
               {!active && task.status !== 'done' && (
                 <div className="nightnova-wb-line">
                   <button type="button" disabled={working || index === 0} onClick={() => void action(() => window.rev.nightnova.move(task.id, -1))}>↑</button>
                   <button type="button" disabled={working || index === state.tasks.length - 1} onClick={() => void action(() => window.rev.nightnova.move(task.id, 1))}>↓</button>
                   <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.remove(task.id))}>삭제</button>
+                  {(task.status === 'review' || task.status === 'error') && (
+                    <button type="button" disabled={working} onClick={() => {
+                      if (confirm('Git 변경 내역을 확인했나요? 이 작업을 새로 재시도 대기열에 넣습니다.')) {
+                        void action(() => window.rev.nightnova.retry(task.id))
+                      }
+                    }}>수동 재시도</button>
+                  )}
                 </div>
               )}
             </div>
@@ -201,7 +303,17 @@ export function NightnovaWorkbench() {
               <div key={log.at + '-' + index}>[{fmt(log.at)}] {log.type}: {log.message}</div>
             ))}
           </div>
-          <small>체크포인트: {fmt(state.checkpointAt)}</small>
+          <div className="nightnova-wb-line">
+            <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.handoff())}>
+              현재 상태 인계서 생성
+            </button>
+            <button type="button" disabled={working || !state.handoffPath} onClick={() => {
+              void window.rev.nightnova.showHandoff().catch((e) => setError(String(e)))
+            }}>
+              인계서 폴더 열기
+            </button>
+          </div>
+          <small>체크포인트: {fmt(state.checkpointAt)} · 마지막 활동: {fmt(state.lastActivityAt ?? null)}</small>
           {state.handoffPath && <p className="nightnova-path">인계서: {state.handoffPath}</p>}
           {state.git && (
             <details>

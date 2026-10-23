@@ -25,39 +25,48 @@ const stored = (() => {
       mode: raw.mode === 'columns' || raw.mode === 'rows' ? raw.mode : 'single',
       agentDock: raw.agentDock === 'bottom' ? 'bottom' : 'right',
       ratio: typeof raw.ratio === 'number' ? clamp(raw.ratio) : 0.5,
-      bottomRatio: typeof raw.bottomRatio === 'number' ? clamp(raw.bottomRatio) : 0.38
+      bottomRatio: typeof raw.bottomRatio === 'number' ? clamp(raw.bottomRatio) : 0.38,
+      secondaryId: typeof raw.secondaryId === 'string' && /^t\d+$/.test(raw.secondaryId)
+        ? raw.secondaryId : null
     } as const
   } catch {
-    return { mode: 'single', agentDock: 'right', ratio: 0.5, bottomRatio: 0.38 } as const
+    return { mode: 'single', agentDock: 'right', ratio: 0.5, bottomRatio: 0.38, secondaryId: null } as const
   }
 })()
 
-function persist(mode: NightnovaSplitMode, ratio: number, agentDock: NightnovaAgentDock, bottomRatio: number): void {
-  try { localStorage.setItem(KEY, JSON.stringify({ mode, ratio, agentDock, bottomRatio })) } catch { /* no storage */ }
+function persist(state: SplitState): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({
+      mode: state.mode, ratio: state.ratio, agentDock: state.agentDock,
+      bottomRatio: state.bottomRatio, secondaryId: state.secondaryId
+    }))
+  } catch { /* no storage */ }
 }
 
 export const useNightnovaSplitStore = create<SplitState>((set, get) => ({
   ...stored,
-  secondaryId: null,
   setMode: (mode) => {
     if (mode !== 'single' && mode !== 'columns' && mode !== 'rows') return
     set({ mode })
-    const s = get(); persist(s.mode, s.ratio, s.agentDock, s.bottomRatio)
+    persist(get())
   },
-  setSecondary: (secondaryId) => set({ secondaryId }),
+  setSecondary: (secondaryId) => {
+    set({ secondaryId: secondaryId && /^t\d+$/.test(secondaryId) ? secondaryId : null })
+    persist(get())
+  },
   setRatio: (ratio) => {
     if (!Number.isFinite(ratio)) return
     set({ ratio: clamp(ratio) })
-    const s = get(); persist(s.mode, s.ratio, s.agentDock, s.bottomRatio)
+    persist(get())
   },
   setAgentDock: (agentDock) => {
     if (agentDock !== 'right' && agentDock !== 'bottom') return
     set({ agentDock })
-    const s = get(); persist(s.mode, s.ratio, s.agentDock, s.bottomRatio)
+    persist(get())
   },
   setBottomRatio: (bottomRatio) => {
     if (!Number.isFinite(bottomRatio)) return
     set({ bottomRatio: clamp(bottomRatio) })
-    const s = get(); persist(s.mode, s.ratio, s.agentDock, s.bottomRatio)
+    persist(get())
   }
 }))
