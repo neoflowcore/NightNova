@@ -15,6 +15,7 @@ import {
 } from './chrome-cdp'
 import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
+import { registerNightnovaIpc } from './nightnova/ipc'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -1026,6 +1027,19 @@ app.whenReady().then(() => {
   )
 
   registerAcpIpc()
+
+  const nightnova = registerNightnovaIpc(() => mainWindow)
+  let finishQuit = false
+  app.on('before-quit', (event) => {
+    if (finishQuit) return
+    const state = nightnova.state()
+    if (state.status !== 'running' && state.status !== 'stopping') return
+    event.preventDefault()
+    void nightnova.shutdown().finally(() => {
+      finishQuit = true
+      app.quit()
+    })
+  })
 
   ipcMain.handle('picker:start', () => startPicker())
   ipcMain.handle('picker:stop', () => stopPicker())

@@ -1,20 +1,22 @@
 {
-  "name": "rever-browser",
-  "productName": "Rever Browser",
+  "name": "nightnova",
+  "productName": "Nightnova",
   "version": "0.1.6",
   "private": true,
-  "description": "AI agent browser for web API reverse engineering",
+  "description": "Nightnova private local AI development browser",
   "license": "MIT",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "postinstall": "bash scripts/patch-electron-name.sh && electron-rebuild -f -w node-pty",
+    "postinstall": "node scripts/patch-electron-name.mjs && electron-rebuild -f -w node-pty",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "e2e": "electron-vite build && playwright test -c e2e/playwright.config.ts"
+    "e2e": "electron-vite build && playwright test -c e2e/playwright.config.ts",
+    "prebuild": "node scripts/gen-icons.mjs",
+    "package:win": "npm run build && electron-builder --win nsis --x64"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.20.0",

@@ -4,7 +4,7 @@ import { create } from 'zustand'
 //  - 'acp' : the structured in-app chat over the ACP transport (default)
 //  - 'cli' : a real terminal running a local CLI agent (Claude Code) wired to
 //            rever's MCP server.
-export type AgentMode = 'acp' | 'cli'
+export type AgentMode = 'acp' | 'cli' | 'nightnova'
 
 const KEY = 'rev:agent-mode'
 
@@ -14,7 +14,8 @@ interface AgentModeState {
 }
 
 export const useAgentModeStore = create<AgentModeState>((set) => ({
-  mode: (localStorage.getItem(KEY) as AgentMode) || 'acp',
+  mode: (['acp', 'cli', 'nightnova'].includes(localStorage.getItem(KEY) || '')
+    ? localStorage.getItem(KEY) : 'acp') as AgentMode,
   setMode: (mode) => {
     localStorage.setItem(KEY, mode)
     set({ mode })

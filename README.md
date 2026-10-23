@@ -1,17 +1,38 @@
-# NightNova
+# Nightnova
 
-NightNova is a personal Chromium/Electron AI-agent browser in development.
+**Nightnova** is a local, personal Chromium/Electron AI development browser for Windows-first workflows.
 
-## Foundation
+> Status: B1 functional integration committed as source. A runnable Windows installer and end-to-end Codex ACP session have **not** been verified. Do not treat the code integration as a release.
 
-- Upstream: [Rever Browser](https://github.com/greekr4/rever-browser) v0.1.6 (`5955503ae5a9d6244d03df141991a7cffd80c029`), MIT licensed.
-- Product goals: AI-assisted development loops, safe absolute-time stop, local checkpoints, split browser views, GitHub handoff, Windows packaging.
-- The original upstream `LICENSE` and `NOTICE` must be preserved when importing.
+## Included
 
-## Status
+- Existing Rever Browser Chromium webviews and ACP agent infrastructure (upstream 0.1.6).
+- **Autonomous development workbench:** choose a local Git repository, enqueue up to 40 tasks, use Codex/Claude ACP, inspect turn logs, pause and resume from checkpoints.
+- Main-process **absolute deadline gates**: no new turns at T-5m, cancel at T-30s, process kill at T-25s, write handoff to userData on finish.
+- **Action Economy:** no app-generated Git commits/pushes/merges/deployments or background GitHub Actions; optional single end-of-run validation.
+- **Browser split layout:** one, two side-by-side, or two stacked embedded tabs with draggable divider; optional bottom-docked AI panel.
+- Local checkpoint and Markdown handoff artifacts; restricted tool auto-approval and read-only default.
 
-Initial repository bootstrap. Source import and Windows runtime validation are not yet complete.
+## Start locally
 
-## Development policy
+1. Install supported Node.js, npm, Git and a Codex ACP executable; authenticate the CLI on the machine.
+2. `npm install` (native `node-pty` rebuild needs the usual desktop platform toolchain).
+3. `npm run dev`, then open the **자동개발** panel.
+4. Choose a **Git repository root**, set a future deadline at least 5 minutes away, add a bounded task, explicitly enable workspace editing if needed, then press Start.
+5. Inspect the local working tree and validation before using `npm run package:win` on a Windows x64 system.
 
-Long Full-Shot functional batches, minimal commits, and GitHub Action Economy. Do not enable upstream CI workflows until the NightNova integration is ready.
+Your local Codex subscription may have rate/usage limits. Nightnova does not bypass those limits.
+
+## Important
+
+An ACP agent may have tools that do not request permission; therefore the approval filter is not an OS sandbox. Do not run unattended development against sensitive workspaces. Use a disposable repository and review the final Git diff. Chrome browser updates are not Electron Chromium updates.
+
+## Repository provenance
+
+- Upstream: [Rever Browser](https://github.com/greekr4/rever-browser) v0.1.6 (`5955503ae5a9d6244d03df141991a7cffd80c029`).
+- Keep upstream MIT `LICENSE` and `NOTICE`.
+- [B1 implementation and acceptance gates](docs/NIGHTNOVA_B1_IMPLEMENTATION.md).
+
+## GitHub Actions
+
+No CI workflows were enabled during B1. Run a single consolidated local verification after the functional batch. The full Windows packaging acceptance gate remains outstanding.

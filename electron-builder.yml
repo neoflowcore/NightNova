@@ -1,5 +1,5 @@
-appId: io.greekr4.reverbrowser
-productName: Rever Browser
+appId: app.nightnova.browser
+productName: Nightnova
 directories:
   output: release
   buildResources: build
@@ -19,7 +19,7 @@ mac:
         - x64
   category: public.app-category.developer-tools
   icon: build/icon.icns
-  artifactName: Rever-Browser-${version}-${arch}.${ext}
+  artifactName: Nightnova-${version}-${arch}.${ext}
   identity: null
   darkModeSupport: true
 dmg:
@@ -30,7 +30,7 @@ win:
       arch:
         - x64
   icon: build/icon.ico
-  artifactName: Rever-Browser-${version}-setup.${ext}
+  artifactName: Nightnova-${version}-setup.${ext}
 nsis:
   oneClick: false
   perMachine: false

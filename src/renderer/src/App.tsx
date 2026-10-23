@@ -10,12 +10,14 @@ import { MarkupEditor } from '@/components/MarkupEditor'
 import { ProxyButton } from '@/components/ProxyButton'
 import { ScreencastView } from '@/components/ScreencastView'
 import { TabBar } from '@/components/TabBar'
-import { WebviewTab, type WebviewTabHandle } from '@/components/WebviewTab'
+import { type WebviewTabHandle } from '@/components/WebviewTab'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { CopyToast } from '@/components/CopyToast'
 import { PageEventToast } from '@/components/PageEventToast'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { ChatPanel } from '@/components/chat/ChatPanel'
+import { NightnovaWorkbench } from '@/components/NightnovaWorkbench'
+import { NightnovaBrowserSplit } from '@/components/NightnovaBrowserSplit'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
 import { useCdpEvents } from '@/hooks/use-cdp-events'
@@ -31,6 +33,7 @@ import { useChatCollapsedStore } from '@/stores/chat-collapsed'
 import { useChatDraft } from '@/stores/chat-draft'
 import { useI18nStore, useT } from '@/stores/i18n'
 import { useViewportStore } from '@/stores/viewport'
+import { useNightnovaSplitStore, type NightnovaSplitMode } from '@/stores/split-view'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
 
@@ -114,6 +117,41 @@ function App() {
   const lang = useI18nStore((s) => s.lang)
   const setLang = useI18nStore((s) => s.setLang)
   const t = useT()
+  const splitMode = useNightnovaSplitStore((s) => s.mode)
+  const setSplitMode = useNightnovaSplitStore((s) => s.setMode)
+  const setSecondary = useNightnovaSplitStore((s) => s.setSecondary)
+  const agentDock = useNightnovaSplitStore((s) => s.agentDock)
+  const setAgentDock = useNightnovaSplitStore((s) => s.setAgentDock)
+  const bottomRatio = useNightnovaSplitStore((s) => s.bottomRatio)
+  const setBottomRatio = useNightnovaSplitStore((s) => s.setBottomRatio)
+
+  const changeSplit = (mode: NightnovaSplitMode): void => {
+    if (mode !== 'single' && tabs.length < 2) {
+      const newId = addTab('about:blank', { activate: false })
+      setSecondary(newId)
+    }
+    setSplitMode(mode)
+  }
+
+  const beginBottomDrag = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const host = event.currentTarget.parentElement
+    if (!host) return
+    event.preventDefault()
+    document.body.classList.add('resizing')
+    const onMove = (e: MouseEvent): void => {
+      const rect = host.getBoundingClientRect()
+      setBottomRatio((rect.bottom - e.clientY) / Math.max(1, rect.height))
+    }
+    const onStop = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onStop)
+      window.removeEventListener('blur', onStop)
+      document.body.classList.remove('resizing')
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onStop)
+    window.addEventListener('blur', onStop)
+  }
 
 
   const tabRefs = useRef<Map<string, WebviewTabHandle>>(new Map())
@@ -377,7 +415,7 @@ function App() {
           <TabBar />
         ) : (
           <span style={{ flex: 1, fontSize: 12, opacity: 0.6, marginBottom: 11 }}>
-            rever-browser — External Chrome
+            Nightnova — External Chrome
           </span>
         )}
         <IpBadge refreshSignal={ipRefresh} />
@@ -416,7 +454,7 @@ function App() {
         </button>
       </div>
 
-      <main style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: agentDock === 'bottom' ? 'column' : 'row', minHeight: 0, position: 'relative' }}>
         <section
           style={{
             flex: 1,
@@ -655,6 +693,38 @@ function App() {
                 {t('toolbar.external')}
               </button>
             </div>
+            <div role="group" aria-label="Nightnova 분할 화면" style={{ display: 'inline-flex', gap: 2, flexShrink: 0 }}>
+              {(['single', 'columns', 'rows'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  className="toolbar-btn"
+                  type="button"
+                  disabled={browserMode !== 'embedded'}
+                  aria-pressed={splitMode === mode}
+                  title={mode === 'single' ? '단일 브라우저' : mode === 'columns' ? '좌우 2분할' : '상하 2분할'}
+                  style={{ background: splitMode === mode ? 'var(--accent-soft)' : undefined }}
+                  onClick={() => changeSplit(mode)}
+                >
+                  {mode === 'single' ? '1창' : mode === 'columns' ? '좌우' : '상하'}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="toolbar-btn"
+                onClick={() => { setAgentDock(agentDock === 'right' ? 'bottom' : 'right'); setChatCollapsed(false) }}
+                title="AI 개발창 위치: 오른쪽 / 아래쪽 전환"
+              >
+                {agentDock === 'right' ? 'AI→' : 'AI↓'}
+              </button>
+              <button
+                type="button"
+                className="toolbar-btn"
+                title="Nightnova 자동 개발 작업창 열기"
+                onClick={() => { setAgentMode('nightnova'); setChatCollapsed(false) }}
+              >
+                자동개발
+              </button>
+            </div>
           </form>
           {browserMode === 'embedded' && <BookmarkBar />}
           {/* paddingBottom reserves the chip bar's strip so the webview ends
@@ -671,16 +741,15 @@ function App() {
             }}
           >
             {browserMode === 'embedded' ? (
-              <>
-                {tabs.map((t) => (
-                  <WebviewTab
-                    key={t.id}
-                    ref={setTabRef(t.id)}
-                    tab={t}
-                    active={t.id === activeId}
-                  />
-                ))}
-              </>
+              <NightnovaBrowserSplit
+                tabs={tabs}
+                activeId={activeId}
+                refFor={setTabRef}
+                onFocusSecondary={(previousId, nextId) => {
+                  setSecondary(previousId)
+                  useTabsStore.getState().selectTab(nextId)
+                }}
+              />
             ) : (
               <ScreencastView />
             )}
@@ -767,9 +836,14 @@ function App() {
         </section>
 
         {!chatCollapsed && (
-          <div className="splitter" onMouseDown={chat.startDrag} title="Drag to resize" />
+          <div
+            className="splitter"
+            onMouseDown={agentDock === 'bottom' ? beginBottomDrag : chat.startDrag}
+            style={agentDock === 'bottom' ? { width: '100%', height: 5, cursor: 'row-resize' } : undefined}
+            title="드래그하여 AI 작업창 크기 조절"
+          />
         )}
-        <button
+        {agentDock === 'right' && <button
           type="button"
           className="chat-toggle-handle"
           style={{ right: chatCollapsed ? 2 : chat.width + 4 }}
@@ -778,20 +852,22 @@ function App() {
           aria-label={chatCollapsed ? t('toolbar.openChat') : t('toolbar.collapseChat')}
         >
           {chatCollapsed ? '‹' : '›'}
-        </button>
+        </button>}
 
         {/* Kept mounted while collapsed (width 0 + hidden overflow) so the chat
             session and any in-flight stream survive the toggle. */}
         <aside
           className="agent-panel"
           style={{
-            width: chatCollapsed ? 0 : chat.width,
+            width: chatCollapsed ? 0 : agentDock === 'bottom' ? '100%' : chat.width,
+            height: chatCollapsed ? 0 : agentDock === 'bottom' ? String(bottomRatio * 100) + '%' : undefined,
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
-            minHeight: 0,
+            minHeight: agentDock === 'bottom' && !chatCollapsed ? 180 : 0,
             overflow: 'hidden',
-            borderLeft: chatCollapsed ? 'none' : '1px solid var(--border)',
+            borderLeft: chatCollapsed || agentDock === 'bottom' ? 'none' : '1px solid var(--border)',
+            borderTop: !chatCollapsed && agentDock === 'bottom' ? '1px solid var(--border)' : undefined,
             ['--chat-w' as never]: `${chat.width}px`
           }}
         >
@@ -806,6 +882,7 @@ function App() {
           >
             <AgentModeTab label={t('agent.chat')} active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
             <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
+            <AgentModeTab label="자동개발" active={agentMode === 'nightnova'} onClick={() => setAgentMode('nightnova')} />
           </div>
           {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
               mode; mount the terminal only while selected so the PTY is killed
@@ -818,6 +895,9 @@ function App() {
               <TerminalPanel />
             </div>
           )}
+          <div style={{ flex: 1, minHeight: 0, display: agentMode === 'nightnova' ? 'flex' : 'none', flexDirection: 'column' }}>
+            <NightnovaWorkbench />
+          </div>
         </aside>
 
       </main>

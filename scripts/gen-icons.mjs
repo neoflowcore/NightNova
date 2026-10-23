@@ -10,15 +10,15 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const MACOS = 'build/icon-macos.svg'
-const TIGHT = 'build/icon.svg'
-const SMALL = 'build/icon-small.svg'
+const MACOS = 'build/icon-nightnova.svg'
+const TIGHT = 'build/icon-nightnova.svg'
+const SMALL = 'build/icon-nightnova.svg'
 
 // SVGs declare width=1024, so density scales the vector render per size.
 const render = (svg, size) =>
   sharp(svg, { density: (72 * size) / 1024 }).resize(size, size).png().toBuffer()
 
-const iconset = join(tmpdir(), 'rever-icon.iconset')
+const iconset = join(tmpdir(), 'nightnova-icon.iconset')
 mkdirSync(iconset, { recursive: true })
 
 const ICONSET = [
@@ -37,6 +37,7 @@ for (const [name, size, svg] of ICONSET) {
   writeFileSync(join(iconset, name), await render(svg, size))
 }
 
+mkdirSync('resources', { recursive: true })
 writeFileSync('build/icon.png', await render(MACOS, 1024))
 writeFileSync('resources/icon.png', await render(TIGHT, 1024))
 
@@ -53,3 +54,10 @@ for (const [size, svg] of ICO) {
 writeFileSync('build/icon.ico', await pngToIco(pngs))
 
 console.log('iconset dir:', iconset)
+
+// NSIS/Windows uses build/icon.ico generated above. macOS needs an .icns
+// conversion, only available on macOS and never required for Windows builds.
+if (process.platform === 'darwin') {
+  const { execFileSync } = await import('node:child_process')
+  execFileSync('iconutil', ['-c', 'icns', iconset, '-o', 'build/icon.icns'])
+}

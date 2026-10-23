@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CliCommand, CliData } from '../shared/cli-spec'
 import type { PageEvent } from '../main/ai-events'
 import type { DownloadRecord } from '../main/downloads'
+import type { NightnovaConfig, NightnovaSnapshot } from '../shared/nightnova'
 
 export type { PageEvent, DownloadRecord }
 
@@ -228,6 +229,25 @@ export interface StoredRequestSummary {
 }
 
 const api = {
+  nightnova: {
+    state: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:state'),
+    chooseWorkspace: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:choose-workspace'),
+    configure: (patch: Partial<NightnovaConfig>): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:configure', patch),
+    enqueue: (instruction: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:enqueue', instruction),
+    remove: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:remove', id),
+    move: (id: string, delta: number): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:move', id, delta),
+    start: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:start'),
+    stop: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:stop'),
+    checkpoint: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:checkpoint'),
+    restore: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:restore'),
+    reset: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:reset'),
+    git: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:git'),
+    onState: (handler: (snapshot: NightnovaSnapshot) => void): (() => void) => {
+      const listener = (_event: unknown, snapshot: NightnovaSnapshot) => handler(snapshot)
+      ipcRenderer.on('nightnova:state', listener)
+      return () => ipcRenderer.removeListener('nightnova:state', listener)
+    }
+  },
   cdp: {
     attach: (webContentsId: number) => ipcRenderer.invoke('cdp:attach', webContentsId),
     detach: (webContentsId: number) => ipcRenderer.invoke('cdp:detach', webContentsId),
