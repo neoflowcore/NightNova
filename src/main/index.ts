@@ -92,20 +92,18 @@ app.userAgentFallback = app.userAgentFallback
   .replace(/\s*Electron\/\S+/, '')
   .replace(new RegExp(`\\s*${app.getName()}\\/\\S+`, 'i'), '')
 
-// Display name for menus, About panel and notifications. Must come after the
-// UA strip above (which matches the original package name) and before
-// installMenu (whose appMenu role reads app.name). userData is pinned to the
-// original 'rever-browser' directory so mcp-endpoint.json, cookies and
-// localStorage keep their existing location.
-app.setName('Rever Browser')
-// REVER_USER_DATA_DIR isolates a run (E2E tests) from the real profile —
-// chat history, cookies, settings and mcp-endpoint.json all live under it.
+// Nightnova owns its own profile. Never reuse or silently migrate the
+// upstream Rever Browser cookie jar; it may contain unrelated logins.
+// Legacy REVER_USER_DATA_DIR is accepted ONLY as an explicit dev/E2E override.
+app.setName('Nightnova')
 app.setPath(
   'userData',
-  process.env.REVER_USER_DATA_DIR || path.join(app.getPath('appData'), 'rever-browser')
+  process.env.NIGHTNOVA_USER_DATA_DIR ||
+    process.env.REVER_USER_DATA_DIR ||
+    path.join(app.getPath('appData'), 'nightnova')
 )
 app.setAboutPanelOptions({
-  applicationName: 'Rever Browser',
+  applicationName: 'Nightnova',
   applicationVersion: app.getVersion()
 })
 
@@ -113,18 +111,9 @@ app.setAboutPanelOptions({
 // other AutomationControlled blink features.
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
-// Encrypt the persisted cookie store with a built-in key instead of an OS
-// keychain entry. This app ships unsigned/ad-hoc, so a keychain-backed key is
-// tied to the code signature: every update changes the signature, which re-fires
-// the macOS keychain prompt ("Rever Browser Safe Storage") and makes previously
-// saved cookies undecryptable — silently logging users out on each release.
-// macOS ignores --password-store (Linux-only); the mac lever is
-// --use-mock-keychain, which routes os_crypt/safeStorage through a stable
-// in-process key with no Keychain access and no prompt. Cookies still persist
-// across launches (weaker at-rest crypto is acceptable for a local reversing
-// tool). password-store=basic covers the same case on Linux.
-app.commandLine.appendSwitch('use-mock-keychain')
-app.commandLine.appendSwitch('password-store', 'basic')
+// Use the native OS credential store for a personal browser profile.
+// Do not force --use-mock-keychain or password-store=basic: those would
+// weaken at-rest protection for saved web sessions on supported platforms.
 
 // Keep the renderer running at full speed when the window is not the frontmost
 // one. Chromium stops producing compositor frames for a hidden or occluded

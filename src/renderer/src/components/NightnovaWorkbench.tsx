@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { NightnovaConfig, NightnovaSnapshot, NightnovaTaskTemplate } from '../../../shared/nightnova'
+import type { NightnovaConfig, NightnovaSnapshot, NightnovaTaskTemplate, NightnovaReview } from '../../../shared/nightnova'
 import { nightnovaProgress, isNightnovaBusy } from '../../../shared/nightnova'
 
 function fmt(when: number | null): string {
@@ -44,6 +44,8 @@ export function NightnovaWorkbench() {
   const [clock, setClock] = useState(Date.now)
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
+  const [review, setReview] = useState<NightnovaReview|null>(null)
+  const [bundleTitle, setBundleTitle] = useState('')
   useEffect(() => {
     let live = true
     void window.rev.nightnova.state().then((snapshot) => {
@@ -202,6 +204,12 @@ export function NightnovaWorkbench() {
         <section className="nightnova-wb-section">
           <h4>2. 작업 큐</h4>
           <div className="nightnova-wb-line">
+            <button type="button" disabled={active || working} onClick={() => void action(() => window.rev.nightnova.enqueueBundle('longshot-10'))}>풀롱샷 10작업 추가</button>
+            <button type="button" disabled={active || working} onClick={() => void action(() => window.rev.nightnova.queueImport())}>큐 JSON 가져오기</button>
+            <button type="button" disabled={working || state.tasks.length===0} onClick={() => { void window.rev.nightnova.queueExport().then(path=>{if(path)setBundleTitle('저장: '+path)}).catch(e=>setError(String(e))) }}>큐 JSON 내보내기</button>
+          </div>
+          {bundleTitle && <p className="nightnova-path">{bundleTitle}</p>}
+          <div className="nightnova-wb-line">
             <select
               title="작업 템플릿"
               aria-label="작업 템플릿 선택"
@@ -297,6 +305,23 @@ export function NightnovaWorkbench() {
         </section>
         <section className="nightnova-wb-section">
           <h4>4. 진행 로그 / 인계</h4>
+          <div className="nightnova-wb-line">
+            <button type="button" disabled={!config.workspace || working} onClick={()=>{
+              setWorking(true); setError('')
+              void window.rev.nightnova.review().then(setReview).catch(e=>setError(String(e))).finally(()=>setWorking(false))
+            }}>Git 변경사항 검토</button>
+          </div>
+          {review && <details open className="nightnova-doctor">
+            <summary>Git {review.branch} · 변경 {review.files.length}개 · {review.head}</summary>
+            {review.files.map((file,i)=><div key={i} className="nightnova-doctor-item">
+              <strong>{file.status} {file.path}</strong>
+              {file.previousPath && <span>이전: {file.previousPath}</span>}
+            </div>)}
+            {review.truncated && <p className="nightnova-wb-note">표시 길이 제한으로 일부 생략되었습니다.</p>}
+            <pre className="nightnova-log">{review.stat}{'\n'}{review.diffPreview}</pre>
+          </details>}
+          <p className="nightnova-wb-note">ACP 도구 호출: {state.toolCalls ?? 0}회</p>
+          {(state.recentTools ?? []).slice(-8).map((tool,i)=><div key={tool.id+i} className="nightnova-wb-note">{tool.title} · {tool.status}</div>)}
           {state.liveOutput && <pre className="nightnova-log">{state.liveOutput}</pre>}
           <div className="nightnova-log">
             {state.logs.slice(-20).map((log, index) => (

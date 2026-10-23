@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, shell } from 'electron'
 import { NightnovaCoordinator } from './coordinator'
+import { exportNightnovaQueue, importNightnovaQueue } from './queue-file'
 import type { NightnovaConfig } from '../../shared/nightnova'
 
 export function registerNightnovaIpc(getWindow: () => BrowserWindow | null): NightnovaCoordinator {
@@ -41,6 +42,22 @@ export function registerNightnovaIpc(getWindow: () => BrowserWindow | null): Nig
   ) => {
     await access(event)
     return coordinator.enqueueMany(items)
+  })
+  ipcMain.handle('nightnova:bundles', async (event) => { await access(event); return coordinator.bundles() })
+  ipcMain.handle('nightnova:enqueue-bundle', async (event, id: string) => { await access(event); return coordinator.enqueueBundle(id) })
+  ipcMain.handle('nightnova:review', async (event) => { await access(event); return coordinator.review() })
+  ipcMain.handle('nightnova:queue-export', async (event) => {
+    await access(event)
+    const win=getWindow()
+    if(!win) throw new Error('창이 없습니다.')
+    return exportNightnovaQueue(win, coordinator.state().tasks)
+  })
+  ipcMain.handle('nightnova:queue-import', async (event) => {
+    await access(event)
+    const win=getWindow()
+    if(!win) throw new Error('창이 없습니다.')
+    const items=await importNightnovaQueue(win)
+    return items ? coordinator.enqueueMany(items) : coordinator.state()
   })
   ipcMain.handle('nightnova:templates', async (event) => {
     await access(event)

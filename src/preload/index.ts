@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CliCommand, CliData } from '../shared/cli-spec'
 import type { PageEvent } from '../main/ai-events'
 import type { DownloadRecord } from '../main/downloads'
-import type { NightnovaConfig, NightnovaDoctor, NightnovaSnapshot, NightnovaTaskTemplate } from '../shared/nightnova'
+import type { NightnovaConfig, NightnovaDoctor, NightnovaSnapshot, NightnovaTaskTemplate, NightnovaReview } from '../shared/nightnova'
 
 export type { PageEvent, DownloadRecord }
 
@@ -237,6 +237,11 @@ const api = {
       ipcRenderer.invoke('nightnova:enqueue', instruction, expectChanges),
     enqueueMany: (items: Array<{ instruction: string; expectChanges?: boolean }>): Promise<NightnovaSnapshot> =>
       ipcRenderer.invoke('nightnova:enqueue-many', items),
+    bundles: (): Promise<Array<{id:string;title:string;description:string;tasks:Array<{instruction:string;expectChanges:boolean}>}>> => ipcRenderer.invoke('nightnova:bundles'),
+    enqueueBundle: (id:string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:enqueue-bundle',id),
+    review: (): Promise<NightnovaReview> => ipcRenderer.invoke('nightnova:review'),
+    queueImport: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:queue-import'),
+    queueExport: (): Promise<string|null> => ipcRenderer.invoke('nightnova:queue-export'),
     templates: (): Promise<NightnovaTaskTemplate[]> => ipcRenderer.invoke('nightnova:templates'),
     enqueueTemplate: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:enqueue-template', id),
     retry: (id: string): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:retry', id),

@@ -47,6 +47,36 @@ export interface NightnovaTaskTemplate {
   expectChanges: boolean
 }
 
+export interface NightnovaReviewedFile {
+  path: string
+  status: string
+  previousPath: string | null
+  staged: boolean
+}
+
+export interface NightnovaReview {
+  checkedAt: number
+  branch: string
+  head: string
+  files: NightnovaReviewedFile[]
+  stat: string
+  diffPreview: string
+  truncated: boolean
+  dirty: boolean
+}
+
+export interface NightnovaQueueItem {
+  instruction: string
+  expectChanges: boolean
+}
+
+export interface NightnovaToolActivity {
+  at: number
+  id: string
+  title: string
+  status: string
+}
+
 export interface NightnovaDoctorCheck {
   id: string
   ok: boolean
@@ -104,6 +134,9 @@ export interface NightnovaSnapshot {
   runId?: string | null
   lastActivityAt?: number | null
   doctor?: NightnovaDoctor | null
+  toolCalls?: number
+  recentTools?: NightnovaToolActivity[]
+  queueExportPath?: string | null
 }
 
 export const NIGHTNOVA_DEFAULT_CONFIG: NightnovaConfig = {
@@ -136,7 +169,10 @@ export function newNightnovaSnapshot(): NightnovaSnapshot {
     logs: [],
     runId: null,
     lastActivityAt: null,
-    doctor: null
+    doctor: null,
+    toolCalls: 0,
+    recentTools: [],
+    queueExportPath: null
   }
 }
 

@@ -19,6 +19,8 @@ import { captureNightnovaEvidence, hasNightnovaChanges } from './change-tracker'
 import { nightnovaTaskPrompt, parseNightnovaAgentResult } from './result-parser'
 import { runNightnovaDoctor } from './readiness'
 import { NIGHTNOVA_TASK_TEMPLATES } from './templates'
+import { NIGHTNOVA_BUNDLES } from './bundles'
+import { nightnovaReview } from './review'
 
 const MAX_TASKS = 40
 const MAX_TASK_LENGTH = 4000
@@ -81,6 +83,9 @@ export class NightnovaCoordinator {
 
   state(): NightnovaSnapshot { return copySnapshot(this.snapshot) }
   templates(): NightnovaTaskTemplate[] { return NIGHTNOVA_TASK_TEMPLATES.map((item) => ({ ...item })) }
+  bundles() { return NIGHTNOVA_BUNDLES.map(bundle => ({...bundle, tasks: bundle.tasks.map(t=>({...t}))})) }
+  async review() { const workspace=this.snapshot.config.workspace; if(!workspace) throw new Error('Git 작업 폴더를 선택하세요.'); return nightnovaReview(workspace) }
+  async enqueueBundle(id: string): Promise<NightnovaSnapshot> { const bundle=NIGHTNOVA_BUNDLES.find(b=>b.id===id); if(!bundle) throw new Error('알 수 없는 묶음'); return this.enqueueMany(bundle.tasks) }
 
   private notify(): void { this.onUpdate(this.state()) }
 
@@ -134,6 +139,8 @@ export class NightnovaCoordinator {
     restored.handoffPath = saved.handoffPath ?? null
     restored.runId = saved.runId ?? null
     restored.logs = Array.isArray(saved.logs) ? saved.logs.slice(-100) : []
+    restored.toolCalls = saved.toolCalls ?? 0
+    restored.recentTools = Array.isArray(saved.recentTools) ? saved.recentTools.slice(-12) : []
     restored.activeTaskId = null
     restored.liveOutput = ''
     restored.lastActivityAt = Date.now()
@@ -434,6 +441,16 @@ export class NightnovaCoordinator {
                 sessionUpdate?: string; content?: { type?: string; text?: string }
               }
               this.snapshot.lastActivityAt = Date.now()
+              if (update?.sessionUpdate === 'tool_call' || update?.sessionUpdate === 'tool_call_update') {
+                const tool = update as typeof update & { toolCallId?: string; title?: string; status?: string }
+                const identifier = String(tool.toolCallId ?? 'tool').slice(0, 100)
+                const recent = this.snapshot.recentTools ?? []
+                if (update.sessionUpdate === 'tool_call') this.snapshot.toolCalls = (this.snapshot.toolCalls ?? 0) + 1
+                this.snapshot.recentTools = [...recent.filter(t => t.id !== identifier), {
+                  at: Date.now(), id: identifier, title: String(tool.title ?? 'Agent tool').slice(0, 120),
+                  status: String(tool.status ?? 'running').slice(0, 40)
+                }].slice(-12)
+              }
               if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
                 output = (output + (update.content.text ?? '')).slice(-MAX_OUTPUT)
                 this.snapshot.liveOutput = output.slice(-1800)
@@ -458,6 +475,12 @@ export class NightnovaCoordinator {
           if (parsed.signal === 'blocked') throw new Error('에이전트가 작업 차단을 보고했습니다: ' + parsed.summary)
           if (task.expectChanges !== false && !hasNightnovaChanges(before, after)) {
             throw new Error('ACP 응답은 완료되었지만 Git 작업 파일 변화가 없습니다.')
+          }
+          if (parsed.signal !== 'done') {
+            task.status = 'review'
+            task.lastError = '에이전트의 명시적 완료 선언이 없습니다. Git 변경을 검토하세요.'
+            this.log('warning', task.lastError)
+            break
           }
           task.status = 'done'
           task.lastOutput = (parsed.summary || output).slice(0, 2000)
