@@ -1,77 +1,53 @@
 import { createHash } from 'node:crypto'
-import { execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { readFile, stat } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import type { NightnovaChangeEvidence } from '../../shared/nightnova'
 
 const exec = promisify(execFile)
-const FILE_LIMIT = 2 * 1024 * 1024
 
-function digestDiff(workspace: string, args: string[], hash: ReturnType<typeof createHash>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('git', args, {
-      cwd: workspace, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
-    })
-    let stderr = ''
-    let done = false
-    const timeout = setTimeout(() => {
-      child.kill()
-      finish(new Error('Git diff fingerprint timed out'))
-    }, 25_000)
-    const finish = (error?: Error): void => {
-      if (done) return
-      done = true
-      clearTimeout(timeout)
-      if (error) reject(error)
-      else resolve()
-    }
-    child.stdout.on('data', (chunk: Buffer) => hash.update(chunk))
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString('utf8')).slice(-1000)
-    })
-    child.on('error', (error) => finish(error))
-    child.on('close', (code) => {
-      if (code !== 0) finish(new Error('git diff failed: ' + stderr))
-      else finish()
-    })
-  })
-}
-
-// Metadata-only worktree fingerprint. Stream the tracked binary Git diff
-// straight into SHA256 rather than loading an entire large patch into RAM.
-// Record up to 50 untracked file hashes so edits to an already-untracked file
-// are visible between turns even when git status remains "?? some-file".
+// Metadata-only worktree fingerprint: it never uploads source code, invokes CI,
+// changes the index, or writes a Git commit. Tracks both already-dirty diffs
+// and untracked files to avoid mistaking a no-op agent turn for completed code.
 export async function captureNightnovaEvidence(workspace: string): Promise<NightnovaChangeEvidence> {
-  const head = await exec('git', ['rev-parse', '--verify', 'HEAD'], {
-    cwd: workspace, timeout: 10_000, maxBuffer: 4096, windowsHide: true
-  }).then((result) => result.stdout.trim()).catch(() => '(unborn)')
-  const { stdout: porcelain } = await exec('git', ['status', '--porcelain=v1', '-uall'], {
-    cwd: workspace, timeout: 25_000, maxBuffer: 2 * 1024 * 1024, windowsHide: true
-  })
-  const lines = porcelain.split(/\r?\n/).filter(Boolean)
-  const hash = createHash('sha256')
-  hash.update(head + '\n' + porcelain + '\n')
-  if (head === '(unborn)') {
-    await digestDiff(workspace, ['diff', '--no-ext-diff', '--binary'], hash)
-    await digestDiff(workspace, ['diff', '--no-ext-diff', '--binary', '--cached'], hash)
-  } else {
-    await digestDiff(workspace, ['diff', '--no-ext-diff', '--binary', 'HEAD'], hash)
+  const run = async (args: string[], cap = 4 * 1024 * 1024): Promise<string> => {
+    const { stdout } = await exec('git', args, {
+      cwd: workspace, timeout: 20_000, maxBuffer: cap, windowsHide: true
+    })
+    return stdout
   }
+  const [head, porcelain, diff] = await Promise.all([
+    run(['rev-parse', 'HEAD'], 4096),
+    run(['status', '--porcelain=v1', '-uall'], 512 * 1024),
+    run(['diff', '--binary', '--no-ext-diff', 'HEAD'], 8 * 1024 * 1024)
+  ])
+  const lines = porcelain.split(/\r?\n/).filter(Boolean)
+  const fingerprint = createHash('sha256')
+  fingerprint.update(head.trim())
+  fingerprint.update('\n')
+  fingerprint.update(porcelain)
+  fingerprint.update('\n')
+  fingerprint.update(diff)
+  // Include the contents of reasonable-size untracked files, because the
+  // status string "?? path" stays unchanged when an agent edits the file.
   for (const line of lines.filter((entry) => entry.startsWith('?? ')).slice(0, 50)) {
     const relative = line.slice(3)
     if (!relative || path.isAbsolute(relative) || relative.split(/[\\/]/).includes('..')) continue
+    const full = path.resolve(workspace, relative)
     try {
-      const info = await stat(path.resolve(workspace, relative))
-      hash.update(relative + ':' + info.size + ':' + info.mtimeMs)
-      if (info.isFile() && info.size <= FILE_LIMIT) hash.update(await readFile(path.resolve(workspace, relative)))
+      const info = await stat(full)
+      fingerprint.update(relative + ':' + info.size + ':' + info.mtimeMs)
+      if (info.isFile() && info.size <= 2 * 1024 * 1024) {
+        fingerprint.update(await readFile(full))
+      }
     } catch {
-      hash.update('missing')
+      fingerprint.update('missing')
     }
   }
   return {
-    fingerprint: hash.digest('hex'), head, dirtyFiles: lines.length,
-    samplePaths: lines.slice(0, 12).map((line) => line.slice(3)),
+    fingerprint: fingerprint.digest('hex'), head: head.trim(),
+    dirtyFiles: lines.length, samplePaths: lines.slice(0, 12).map((line) => line.slice(3)),
     capturedAt: Date.now()
   }
 }
