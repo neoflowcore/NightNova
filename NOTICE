@@ -1,0 +1,14 @@
+rever-browser
+Copyright (c) 2026 TaeVirus
+
+Licensed under the MIT License. See the LICENSE file for the full text.
+
+This product bundles third-party dependencies listed in package.json, each
+under its own permissive license (MIT, Apache-2.0, ISC or BSD).
+
+The following tools are invoked as separate processes and are not bundled or
+distributed with this project:
+
+  - @agentclientprotocol/claude-agent-acp (Apache-2.0)
+  - @agentclientprotocol/codex-acp (Apache-2.0)
+  - webcrack (MIT)

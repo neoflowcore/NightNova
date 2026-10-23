@@ -1,0 +1,37 @@
+appId: io.greekr4.reverbrowser
+productName: Rever Browser
+directories:
+  output: release
+  buildResources: build
+asar: true
+files:
+  - out/**
+  - package.json
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
+  - '!**/node_modules/.bin'
+extraMetadata:
+  main: out/main/index.js
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  artifactName: Rever-Browser-${version}-${arch}.${ext}
+  identity: null
+  darkModeSupport: true
+dmg:
+  title: ${productName}
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: Rever-Browser-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

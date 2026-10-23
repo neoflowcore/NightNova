@@ -1,0 +1,43 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.openchrome/
+.playwright-mcp/
+.superset/
+.vscode/
+
+# Local env
+.env
+.env.local
+*.local
+
+# Private docs — kept in a separate private repo, symlinked back to root.
+# See .private-docs/ for the actual files.
+.private-docs/
+
+# Local design/dev docs — not tracked in the public repo.
+# Exception: README media and the published benchmark are public.
+/docs/*
+!/docs/media/
+!/docs/benchmarks/
+/CLAUDE.md
+/PLAN.md
+/HANDOFF.md
+.claude/
+
+# One-off research reports and design mockups written to the repo root.
+# They are working artifacts, not part of the app; test-fixtures/ is where
+# anything meant to be re-run lives.
+/competitor-scan.html
+/browser-use-ab-report.html
+/ai-activity-viz-mockup.html
+/browser-use-deep-dive.html
+/browser-use-import-progress.html
+__pycache__/
+/workthrough
+
+# Playwright E2E output
+/test-results/
