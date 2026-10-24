@@ -21,7 +21,7 @@ import { runNightnovaDoctor } from './readiness'
 import { NIGHTNOVA_TASK_TEMPLATES } from './templates'
 import { NIGHTNOVA_BUNDLES } from './bundles'
 import { nightnovaReview } from './review'
-import { guardedNightnovaTurn } from './turn-guard'
+import { guardedNightnovaTurn, NightnovaTurnTimeout } from './turn-guard'
 
 const MAX_TASKS = 40
 const MAX_TASK_LENGTH = 4000
@@ -587,6 +587,15 @@ export class NightnovaCoordinator {
           }
         } catch (error) {
           task.lastError = errorText(error)
+          // A timed-out ACP prompt may still be writing files in the child
+          // process. Do not retry it automatically or start another turn.
+          // The finalizer kills the ACP process and records a handoff.
+          if (error instanceof NightnovaTurnTimeout) {
+            task.status = 'review'
+            this.snapshot.reason = 'turn-timeout-review'
+            this.log('warning', '턴 시간초과: 수동 Git 검토 전에는 자동 재시도하지 않습니다.')
+            break
+          }
           if (this.stopping) {
             task.status = 'review'
             break

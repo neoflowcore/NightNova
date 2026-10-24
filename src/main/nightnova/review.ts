@@ -12,7 +12,8 @@ async function readGit(cwd: string, args: string[]): Promise<string> {
     const { stdout } = await exec('git', args, {
       cwd, windowsHide: true, timeout: 20_000, maxBuffer: 256 * 1024
     })
-    return stdout.trim()
+    // -z porcelain is NUL-separated and its leading status spaces are data.
+    return args.includes('-z') ? stdout : stdout.trim()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return '(unavailable: ' + message.slice(0, 160) + ')'

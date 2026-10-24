@@ -16,7 +16,7 @@ import { join } from 'node:path'
 // IMPORTANT: the renderer uses SHARED_PARTITION inline as the webview
 // `partition` attribute default in WebviewTab.tsx — keep the two in sync.
 
-export const SHARED_PARTITION = 'persist:rever-shared'
+export const SHARED_PARTITION = 'persist:nightnova-shared'
 
 // tabId -> isolated partition. Entries are only added for proxy tabs; every
 // other tab resolves to the shared partition. Not cleaned up on tab close —

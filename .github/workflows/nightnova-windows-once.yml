@@ -1,0 +1,59 @@
+name: Nightnova Windows One-Shot
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/nightnova-windows-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightnova-windows-release
+  cancel-in-progress: true
+
+jobs:
+  windows-package:
+    name: Windows x64 build and installer
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'false'
+    steps:
+      - name: Checkout Nightnova source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install packages once (without writing a release)
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+      - name: Verify TypeScript once
+        shell: pwsh
+        run: npm run typecheck
+      - name: Run focused Nightnova tests
+        shell: pwsh
+        run: npx --no-install vitest run src/main/nightnova
+      - name: Build Electron and Windows NSIS
+        shell: pwsh
+        run: npm run package:win
+      - name: Generate SHA256 release manifest
+        shell: pwsh
+        run: npm run release:manifest
+      - name: Upload one Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nightnova-Windows-x64-Installer
+          path: |
+            release/Nightnova-*-setup.exe
+            release/NIGHTNOVA_RELEASE_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

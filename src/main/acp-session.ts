@@ -124,7 +124,10 @@ export async function spawnAcpSession(
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: agentEnv(agentDef.command),
-    shell: process.platform === 'win32'
+    // Windows npm CLI .cmd/.bat shims require cmd.exe under Node 22.
+    // Direct EXE agents should not be unnecessarily passed via a shell.
+    shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(agentDef.command),
+    windowsHide: true
   }) as ChildProcessByStdio<Writable, Readable, Readable>
 
   child.stderr.on('data', (buf: Buffer) => {
@@ -351,7 +354,35 @@ export async function killAcpSession(sessionId: string): Promise<void> {
   if (!entry) return
   entry.dead = true
   sessions.delete(sessionId)
-  entry.child.kill()
+  const pid = entry.child.pid
+  if (process.platform === 'win32' && pid) {
+    // Killing cmd.exe alone can leave the npm shim's Node child working on
+    // files after Nightnova says it stopped. taskkill /T also terminates the
+    // adapter descendants. The PID is from our own spawned child, not IPC.
+    await new Promise<void>((resolve) => {
+      const killer = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+        windowsHide: true, stdio: 'ignore'
+      })
+      let complete = false
+      const finish = (): void => {
+        if (complete) return
+        complete = true
+        clearTimeout(timeout)
+        resolve()
+      }
+      const timeout = setTimeout(() => {
+        entry.child.kill()
+        finish()
+      }, 4500)
+      killer.on('error', () => {
+        entry.child.kill()
+        finish()
+      })
+      killer.on('close', finish)
+    })
+  } else {
+    entry.child.kill()
+  }
 }
 
 export function getSessionModelState(

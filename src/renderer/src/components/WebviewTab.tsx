@@ -217,7 +217,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       // Shared partition → all tabs share one cookie/storage jar like a normal
       // browser profile (must match SHARED_PARTITION in main/tab-partition.ts).
       // Proxy tabs carry their own in-memory partition (incognito-style).
-      partition={tab.partition ?? 'persist:rever-shared'}
+      partition={tab.partition ?? 'persist:nightnova-shared'}
       // The tab has its own webContents, so the window's backgroundThrottling
       // setting does not reach it. Without this, CDP input dispatch into a
       // backgrounded window is acked only every ~5s.

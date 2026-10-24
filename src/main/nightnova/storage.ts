@@ -20,7 +20,7 @@ function assertSnapshot(raw: unknown): NightnovaSnapshot {
   }
   if (snapshot.tasks.some((task) =>
     !task || typeof task.id !== 'string' || typeof task.instruction !== 'string' ||
-    task.instruction.length > 4000 || !['queued', 'running', 'review', 'done', 'error'].includes(task.status)
+    task.instruction.length > 4000 || !['queued', 'running', 'review', 'done', 'error', 'skipped'].includes(task.status)
   )) throw new Error('체크포인트 작업 목록이 손상되었습니다.')
   return snapshot
 }

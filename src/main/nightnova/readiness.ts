@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { access, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { detectAgents } from '../acp-detect'
 import type { NightnovaDoctor, NightnovaDoctorCheck } from '../../shared/nightnova'
@@ -43,7 +43,7 @@ export async function runNightnovaDoctor(workspace: string | null): Promise<Nigh
   const checks: NightnovaDoctorCheck[] = []
   const [git, node, npm] = await Promise.all([
     commandVersion('git', ['--version']),
-    commandVersion(process.execPath, ['--version']),
+    Promise.resolve(process.versions.node),
     commandVersion(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'])
   ])
   checks.push(check('git', !!git, 'Git', git ?? 'Git 실행 파일을 찾지 못함'))
@@ -72,9 +72,6 @@ export async function runNightnovaDoctor(workspace: string | null): Promise<Nigh
       scripts = await projectScripts(validatedWorkspace)
       checks.push(check('scripts', scripts.length > 0, '검증 스크립트',
         scripts.length ? scripts.join(', ') : '프로젝트 package.json에 지정된 검사 스크립트 없음', false))
-      try {
-        await access(path.join(validatedWorkspace, '.git'))
-      } catch { /* Git worktree can have a .git file; resolveWorkspace already checked */ }
     } catch (error) {
       checks.push(check('workspace', false, 'Git 작업 폴더',
         error instanceof Error ? error.message : String(error)))
