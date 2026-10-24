@@ -75,6 +75,11 @@ export function registerNightnovaIpc(getWindow: () => BrowserWindow | null): Nig
     await access(event)
     return coordinator.retryTask(id)
   })
+  ipcMain.handle('nightnova:pause-after-current', async (event) => { await access(event); return coordinator.pauseAfterCurrent() })
+  ipcMain.handle('nightnova:edit-task', async (event, id: string, instruction: string, expectChanges: boolean) => { await access(event); return coordinator.editTask(id, instruction, expectChanges) })
+  ipcMain.handle('nightnova:duplicate-task', async (event, id: string) => { await access(event); return coordinator.duplicateTask(id) })
+  ipcMain.handle('nightnova:skip-task', async (event, id: string) => { await access(event); return coordinator.skipTask(id) })
+  ipcMain.handle('nightnova:clear-finished', async (event) => { await access(event); return coordinator.clearFinished() })
   ipcMain.handle('nightnova:move', async (event, id: string, delta: number) => {
     await access(event)
     return coordinator.moveTask(id, delta)

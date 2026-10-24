@@ -1,10 +1,11 @@
 // Nightnova contracts shared between the trusted main process and renderer.
 // A snapshot is a UI projection, never a command to execute arbitrary shell.
 export type NightnovaStatus = 'idle' | 'running' | 'stopping' | 'paused' | 'completed' | 'failed'
-export type NightnovaTaskStatus = 'queued' | 'running' | 'done' | 'error' | 'review'
+export type NightnovaTaskStatus = 'queued' | 'running' | 'done' | 'error' | 'review' | 'skipped'
 export type NightnovaAgent = 'codex' | 'claude-code'
 export type NightnovaPermission = 'read-only' | 'workspace'
 export type NightnovaValidationMode = 'none' | 'light' | 'full'
+export type NightnovaFailurePolicy = 'stop' | 'continue'
 
 export interface NightnovaConfig {
   workspace: string | null
@@ -15,6 +16,8 @@ export interface NightnovaConfig {
   autoNext: boolean
   permission: NightnovaPermission
   validation: NightnovaValidationMode
+  maxTurnMinutes: number
+  failurePolicy: NightnovaFailurePolicy
 }
 
 export interface NightnovaTask {
@@ -137,6 +140,10 @@ export interface NightnovaSnapshot {
   toolCalls?: number
   recentTools?: NightnovaToolActivity[]
   queueExportPath?: string | null
+  pauseRequested?: boolean
+  currentTurnStartedAt?: number | null
+  permissionsAllowed?: number
+  permissionsDenied?: number
 }
 
 export const NIGHTNOVA_DEFAULT_CONFIG: NightnovaConfig = {
@@ -147,7 +154,9 @@ export const NIGHTNOVA_DEFAULT_CONFIG: NightnovaConfig = {
   maxRetries: 2,
   autoNext: true,
   permission: 'read-only',
-  validation: 'light'
+  validation: 'light',
+  maxTurnMinutes: 90,
+  failurePolicy: 'stop'
 }
 
 export function newNightnovaSnapshot(): NightnovaSnapshot {
@@ -172,7 +181,11 @@ export function newNightnovaSnapshot(): NightnovaSnapshot {
     doctor: null,
     toolCalls: 0,
     recentTools: [],
-    queueExportPath: null
+    queueExportPath: null,
+    pauseRequested: false,
+    currentTurnStartedAt: null,
+    permissionsAllowed: 0,
+    permissionsDenied: 0
   }
 }
 
@@ -182,6 +195,6 @@ export function isNightnovaBusy(status: NightnovaStatus): boolean {
 
 export function nightnovaProgress(state: NightnovaSnapshot): number {
   if (!state.tasks.length) return 0
-  const done = state.tasks.filter((task) => task.status === 'done').length
+  const done = state.tasks.filter((task) => task.status === 'done' || task.status === 'skipped').length
   return Math.round((done / state.tasks.length) * 100)
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { RequestPermissionRequest, SessionNotification } from '@agentclientprotocol/sdk'
+import type { RequestPermissionRequest, RequestPermissionResponse, SessionNotification } from '@agentclientprotocol/sdk'
 import { detectAgents } from '../acp-detect'
 import { catalogAgent } from '../agent-catalog'
 import { cancelSession, killSession, promptSession, spawnSession } from '../agent-router'
@@ -21,6 +21,7 @@ import { runNightnovaDoctor } from './readiness'
 import { NIGHTNOVA_TASK_TEMPLATES } from './templates'
 import { NIGHTNOVA_BUNDLES } from './bundles'
 import { nightnovaReview } from './review'
+import { guardedNightnovaTurn } from './turn-guard'
 
 const MAX_TASKS = 40
 const MAX_TASK_LENGTH = 4000
@@ -54,7 +55,11 @@ function sanitizeConfig(patch: Partial<NightnovaConfig>, current: NightnovaConfi
     permission: patch.permission === 'workspace' || patch.permission === 'read-only'
       ? patch.permission : current.permission,
     validation: patch.validation === 'none' || patch.validation === 'light' || patch.validation === 'full'
-      ? patch.validation : current.validation
+      ? patch.validation : current.validation,
+    maxTurnMinutes: typeof patch.maxTurnMinutes === 'number' && Number.isFinite(patch.maxTurnMinutes)
+      ? Math.max(5, Math.min(180, Math.floor(patch.maxTurnMinutes))) : current.maxTurnMinutes,
+    failurePolicy: patch.failurePolicy === 'continue' || patch.failurePolicy === 'stop'
+      ? patch.failurePolicy : current.failurePolicy
     // A renderer can NEVER select an arbitrary workspace path through config.
   }
 }
@@ -138,6 +143,10 @@ export class NightnovaCoordinator {
     restored.git = saved.git ?? null
     restored.handoffPath = saved.handoffPath ?? null
     restored.runId = saved.runId ?? null
+    restored.pauseRequested = false
+    restored.currentTurnStartedAt = null
+    restored.permissionsAllowed = saved.permissionsAllowed ?? 0
+    restored.permissionsDenied = saved.permissionsDenied ?? 0
     restored.logs = Array.isArray(saved.logs) ? saved.logs.slice(-100) : []
     restored.toolCalls = saved.toolCalls ?? 0
     restored.recentTools = Array.isArray(saved.recentTools) ? saved.recentTools.slice(-12) : []
@@ -259,6 +268,65 @@ export class NightnovaCoordinator {
     return this.state()
   }
 
+
+  async editTask(id: string, instruction: string, expectChanges: boolean): Promise<NightnovaSnapshot> {
+    this.assertIdle()
+    const task = this.snapshot.tasks.find((item) => item.id === id)
+    if (!task || task.status !== 'queued') throw new Error('대기 중인 작업만 편집할 수 있습니다.')
+    if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > MAX_TASK_LENGTH) {
+      throw new Error('작업 지시는 1~4000자여야 합니다.')
+    }
+    task.instruction = instruction.trim()
+    task.expectChanges = expectChanges === true
+    await this.checkpointNow()
+    return this.state()
+  }
+
+  async duplicateTask(id: string): Promise<NightnovaSnapshot> {
+    this.assertIdle()
+    const task = this.snapshot.tasks.find((item) => item.id === id)
+    if (!task) throw new Error('복제할 작업을 찾지 못했습니다.')
+    if (this.snapshot.tasks.length >= MAX_TASKS) throw new Error('작업 큐 최대 40개')
+    this.snapshot.tasks.push(taskFrom(task.instruction, task.expectChanges !== false, 'manual'))
+    this.log('info', '작업 1개를 큐 끝에 복제했습니다.')
+    await this.checkpointNow()
+    return this.state()
+  }
+
+  async skipTask(id: string): Promise<NightnovaSnapshot> {
+    this.assertIdle()
+    const task = this.snapshot.tasks.find((item) => item.id === id)
+    if (!task || !['queued', 'review', 'error'].includes(task.status)) {
+      throw new Error('진행 중 또는 완료된 작업은 건너뛸 수 없습니다.')
+    }
+    task.status = 'skipped'
+    task.completedAt = Date.now()
+    this.log('warning', '사용자가 작업을 건너뛰었습니다: ' + task.instruction.slice(0, 75))
+    await this.checkpointNow()
+    return this.state()
+  }
+
+  async clearFinished(): Promise<NightnovaSnapshot> {
+    this.assertIdle()
+    const old = this.snapshot.tasks.length
+    this.snapshot.tasks = this.snapshot.tasks.filter((task) =>
+      task.status !== 'done' && task.status !== 'skipped'
+    )
+    this.log('info', '완료·건너뜀 ' + String(old - this.snapshot.tasks.length) + '개 정리.')
+    await this.checkpointNow()
+    return this.state()
+  }
+
+  async pauseAfterCurrent(): Promise<NightnovaSnapshot> {
+    if (this.snapshot.status !== 'running') {
+      throw new Error('실행 중에만 작업 후 일시정지를 요청할 수 있습니다.')
+    }
+    this.snapshot.pauseRequested = true
+    this.log('info', '현재 작업이 끝나면 다음 작업에 착수하지 않고 일시정지합니다.')
+    await this.checkpointNow()
+    return this.state()
+  }
+
   async moveTask(id: string, delta: number): Promise<NightnovaSnapshot> {
     this.assertIdle()
     const idx = this.snapshot.tasks.findIndex((task) => task.id === id)
@@ -340,6 +408,11 @@ export class NightnovaCoordinator {
     this.snapshot.handoffPath = null
     this.snapshot.validations = []
     this.snapshot.runId = randomUUID()
+    this.snapshot.pauseRequested = false
+    this.snapshot.permissionsAllowed = 0
+    this.snapshot.permissionsDenied = 0
+    this.snapshot.toolCalls = 0
+    this.snapshot.recentTools = []
     try {
       this.deadline.start(config.deadlineAt)
       this.log('info', '개발 시작: ' + config.agent + ' / 최대 ' + config.maxTurns + '턴 / 최종 통합 검증은 1회')
@@ -398,6 +471,10 @@ export class NightnovaCoordinator {
       this.sessionId = spawned.sessionId
       this.log('info', 'ACP 세션 연결됨: ' + agent.id)
       while (!this.stopping && this.snapshot.status === 'running') {
+        if (this.snapshot.pauseRequested) {
+          this.snapshot.reason = 'pause-after-current'
+          break
+        }
         this.deadline.check()
         if (!this.deadline.canStartTurn()) {
           this.snapshot.reason = 'deadline-handoff'
@@ -421,6 +498,7 @@ export class NightnovaCoordinator {
           task.attempts++
           this.snapshot.turns++
           this.snapshot.activeTaskId = task.id
+          this.snapshot.currentTurnStartedAt = Date.now()
           this.snapshot.liveOutput = ''
           this.notify()
           await this.checkpointNow()
@@ -434,7 +512,7 @@ export class NightnovaCoordinator {
             previousError: task.lastError, expectChanges: task.expectChanges !== false,
             workspace
           })
-          const result = await runAsAgent(() => promptSession(
+          const result = await guardedNightnovaTurn(() => runAsAgent(() => promptSession(
             this.sessionId!, prompt,
             (notification: SessionNotification) => {
               const update = notification.update as {
@@ -460,9 +538,20 @@ export class NightnovaCoordinator {
                 this.notify()
               }
             },
-            (request: RequestPermissionRequest) =>
-              Promise.resolve(nightnovaPermission(request, config.permission, workspace))
-          ))
+            (request: RequestPermissionRequest): Promise<RequestPermissionResponse> => {
+              const response: RequestPermissionResponse = this.stopping || this.abort?.signal.aborted
+                ? { outcome: { outcome: 'cancelled' } }
+                : nightnovaPermission(request, config.permission, workspace)
+              const outcome = response.outcome
+              const allowed = outcome.outcome === 'selected' &&
+                request.options.some((option) => option.optionId === outcome.optionId &&
+                  option.kind.startsWith('allow'))
+              if (allowed) this.snapshot.permissionsAllowed = (this.snapshot.permissionsAllowed ?? 0) + 1
+              else this.snapshot.permissionsDenied = (this.snapshot.permissionsDenied ?? 0) + 1
+              this.notify()
+              return Promise.resolve(response)
+            }
+          )), this.abort!.signal, config.maxTurnMinutes * 60_000)
           if (this.stopping) {
             task.status = 'review'
             task.lastError = '중단된 ACP 턴은 완료로 판정하지 않습니다. 변경 파일 확인 후 수동 재시도하세요.'
@@ -507,13 +596,18 @@ export class NightnovaCoordinator {
             this.log('warning', '작업 재시도 ' + task.attempts + '/' + config.maxRetries + ': ' + task.lastError)
           } else {
             task.status = 'error'
-            failure = task.lastError
-            this.snapshot.reason = 'task-failed'
-            this.log('error', '작업 중단: ' + failure)
-            break
+            this.log('error', '작업 실패: ' + task.lastError)
+            if (config.failurePolicy === 'continue' && this.deadline.canStartTurn()) {
+              this.snapshot.reason = 'task-error-continued'
+            } else {
+              failure = task.lastError
+              this.snapshot.reason = 'task-failed'
+              break
+            }
           }
         } finally {
           this.snapshot.activeTaskId = null
+          this.snapshot.currentTurnStartedAt = null
           this.snapshot.liveOutput = ''
           await this.checkpointNow().catch((error) =>
             this.log('error', '상태 저장 실패: ' + errorText(error)))
@@ -556,6 +650,10 @@ export class NightnovaCoordinator {
         cleanEnd = false
         this.log('warning', '마감까지 시간이 부족하여 통합검증을 건너뛰었습니다.')
       }
+      if (cleanEnd && !failure && this.snapshot.tasks.some((task) => task.status === 'error')) {
+        failure = '일부 작업에 오류가 있어 검토가 필요합니다.'
+        this.snapshot.reason = 'partial-failure'
+      }
       this.deadline.stop()
       if (this.heartbeat) clearInterval(this.heartbeat)
       this.heartbeat = null
@@ -579,6 +677,8 @@ export class NightnovaCoordinator {
       }
       this.stopping = false
       this.abort = null
+      this.snapshot.pauseRequested = false
+      this.snapshot.currentTurnStartedAt = null
       this.log('info', '실행 종료: ' + this.snapshot.status + ' / ' + (this.snapshot.reason ?? '-'))
     }
   }

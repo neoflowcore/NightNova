@@ -46,6 +46,8 @@ export function NightnovaWorkbench() {
   const [working, setWorking] = useState(false)
   const [review, setReview] = useState<NightnovaReview|null>(null)
   const [bundleTitle, setBundleTitle] = useState('')
+  const [editingId, setEditingId] = useState<string|null>(null)
+  const [editText, setEditText] = useState('')
   useEffect(() => {
     let live = true
     void window.rev.nightnova.state().then((snapshot) => {
@@ -175,6 +177,16 @@ export function NightnovaWorkbench() {
             <input type="datetime-local" disabled={active || working} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </label>
           <div className="nightnova-wb-line">
+            <label>작업별 최대 실행(분)
+              <input type="number" min={5} max={180} disabled={active || working} value={config.maxTurnMinutes ?? 90} onChange={(e)=>change({maxTurnMinutes:Number(e.target.value)})}/>
+            </label>
+            <label>실패 처리
+              <select disabled={active || working} value={config.failurePolicy ?? 'stop'} onChange={(e)=>change({failurePolicy:e.target.value as 'stop'|'continue'})}>
+                <option value="stop">실패 시 중단</option><option value="continue">실패 기록 후 계속</option>
+              </select>
+            </label>
+          </div>
+          <div className="nightnova-wb-line">
             <label>최대 턴
               <input type="number" min="1" max="40" disabled={active || working} value={config.maxTurns} onChange={(e) => change({ maxTurns: Number(e.target.value) })} />
             </label>
@@ -259,7 +271,16 @@ export function NightnovaWorkbench() {
           {state.tasks.map((task, index) => (
             <div className="nightnova-task" key={task.id}>
               <div><strong>{index + 1}. {task.status}</strong><span> 시도 {task.attempts} · {task.expectChanges !== false ? '코드 변경' : '분석'}</span></div>
-              <p>{task.instruction}</p>
+              {editingId === task.id ? (
+                <div>
+                  <textarea rows={3} value={editText} onChange={(e)=>setEditText(e.target.value)} maxLength={4000}/>
+                  <button type="button" disabled={working || !editText.trim()} onClick={()=>{
+                    void action(() => window.rev.nightnova.editTask(task.id, editText, task.expectChanges !== false))
+                    setEditingId(null)
+                  }}>편집 저장</button>
+                  <button type="button" onClick={()=>setEditingId(null)}>취소</button>
+                </div>
+              ) : <p>{task.instruction}</p>}
               {task.lastError && <small className="nightnova-error">{task.lastError}</small>}
               {task.lastOutput && <details><summary>에이전트 결과</summary><p>{task.lastOutput}</p></details>}
               {task.evidence && (
@@ -271,6 +292,9 @@ export function NightnovaWorkbench() {
                 <div className="nightnova-wb-line">
                   <button type="button" disabled={working || index === 0} onClick={() => void action(() => window.rev.nightnova.move(task.id, -1))}>↑</button>
                   <button type="button" disabled={working || index === state.tasks.length - 1} onClick={() => void action(() => window.rev.nightnova.move(task.id, 1))}>↓</button>
+                  <button type="button" disabled={working || task.status !== 'queued'} onClick={()=>{setEditingId(task.id);setEditText(task.instruction)}}>편집</button>
+                  <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.duplicateTask(task.id))}>복제</button>
+                  <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.skipTask(task.id))}>건너뜀</button>
                   <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.remove(task.id))}>삭제</button>
                   {(task.status === 'review' || task.status === 'error') && (
                     <button type="button" disabled={working} onClick={() => {
@@ -288,11 +312,13 @@ export function NightnovaWorkbench() {
           <h4>3. 실행 및 중단</h4>
           <div className="nightnova-wb-line">
             <button type="button" disabled={active || working || !config.workspace} onClick={start}>▶ 시작 / 재개</button>
-            <button type="button" disabled={!active || working} onClick={() => void action(() => window.rev.nightnova.stop())}>■ 중단</button>
+            <button type="button" disabled={!active || working || Boolean(state.pauseRequested)} onClick={()=>void action(()=>window.rev.nightnova.pauseAfterCurrent())}>현재 작업 후 일시정지</button>
+            <button type="button" disabled={!active || working} onClick={() => void action(() => window.rev.nightnova.stop())}>■ 즉시 중단</button>
             <button type="button" disabled={working} onClick={() => void action(() => window.rev.nightnova.checkpoint())}>체크포인트 저장</button>
           </div>
           <div className="nightnova-wb-line">
             <button type="button" disabled={active || working} onClick={() => void action(() => window.rev.nightnova.restore())}>수동 복구</button>
+            <button type="button" disabled={active || working} onClick={() => void action(() => window.rev.nightnova.clearFinished())}>완료 작업 정리</button>
             <button type="button" disabled={active || working} onClick={() => {
               if (confirm('작업 목록과 턴 카운터를 초기화할까요? 저장된 Git 파일은 건드리지 않습니다.')) {
                 void action(() => window.rev.nightnova.reset())
@@ -320,7 +346,9 @@ export function NightnovaWorkbench() {
             {review.truncated && <p className="nightnova-wb-note">표시 길이 제한으로 일부 생략되었습니다.</p>}
             <pre className="nightnova-log">{review.stat}{'\n'}{review.diffPreview}</pre>
           </details>}
-          <p className="nightnova-wb-note">ACP 도구 호출: {state.toolCalls ?? 0}회</p>
+          <p className="nightnova-wb-note">ACP 도구 호출: {state.toolCalls ?? 0}회 · 권한 허용 {state.permissionsAllowed ?? 0}회 · 거부 {state.permissionsDenied ?? 0}회</p>
+          {state.pauseRequested && <p className="nightnova-wb-note">현재 작업 완료 후 일시정지 예약됨</p>}
+          {state.currentTurnStartedAt && <p className="nightnova-wb-note">현재 턴 시작: {fmt(state.currentTurnStartedAt)}</p>}
           {(state.recentTools ?? []).slice(-8).map((tool,i)=><div key={tool.id+i} className="nightnova-wb-note">{tool.title} · {tool.status}</div>)}
           {state.liveOutput && <pre className="nightnova-log">{state.liveOutput}</pre>}
           <div className="nightnova-log">
