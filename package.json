@@ -59,5 +59,12 @@
     "vite": "^5.4.11",
     "vitest": "^4.1.8",
     "wabt": "^1.0.39"
-  }
+  },
+  "trustedDependencies": [
+    "electron",
+    "esbuild",
+    "sharp",
+    "node-pty",
+    "@electron/rebuild"
+  ]
 }

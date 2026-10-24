@@ -13,12 +13,12 @@ The workflow `.github/workflows/nightnova-windows-once.yml` runs on the first co
 - The installer is unsigned and may trigger Windows SmartScreen. Do not disable security protections to run it.
 
 ## Local Windows setup
-In PowerShell from the cloned repository:
+Install Node.js 22 and Bun first. In PowerShell from the cloned repository:
 
 ```powershell
 node --version
 git --version
-npm install --no-audit --no-fund
+bun ci
 npm run typecheck
 npx vitest run src/main/nightnova
 npm run package:win

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "rever-browser",
+      "name": "nightnova",
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.20.0",
         "@ai-sdk/react": "^3.0.170",

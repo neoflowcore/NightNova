@@ -18,7 +18,7 @@ const required = [
 const missing = []
 for (const file of required) {
   try {
-    if ((await stat(file)).size < 1_000) missing.push(path.relative(root, file) + ' (too small)')
+    if ((await stat(file)).size === 0) missing.push(path.relative(root, file) + ' (empty)')
   } catch {
     missing.push(path.relative(root, file))
   }

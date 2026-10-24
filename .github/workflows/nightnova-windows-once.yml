@@ -32,13 +32,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install packages once (without writing a release)
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked dependencies (one pass)
         shell: pwsh
-        run: npm install --no-audit --no-fund
-      - name: Verify TypeScript once
+        run: bun ci
+      - name: Confirm Electron runtime and packaging assets
+        shell: pwsh
+        run: |
+          if (!(Test-Path "node_modules/electron/dist/electron.exe")) {
+            throw "Electron Windows binary not installed; inspect trusted lifecycle scripts."
+          }
+          node -e "console.log('Electron version', require('electron/package.json').version)"
+      - name: TypeScript integration check (one pass)
         shell: pwsh
         run: npm run typecheck
-      - name: Run focused Nightnova tests
+      - name: Focused Nightnova runtime tests
         shell: pwsh
         run: npx --no-install vitest run src/main/nightnova
       - name: Build Electron and Windows NSIS

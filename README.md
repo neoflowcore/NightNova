@@ -27,7 +27,7 @@ See [B2 Windows acceptance checklist](docs/NIGHTNOVA_B2_WINDOWS_ACCEPTANCE.md). 
 ## Start locally
 
 1. Install supported Node.js, npm, Git and a Codex ACP executable; authenticate the CLI on the machine.
-2. `npm install` (native `node-pty` rebuild needs the usual desktop platform toolchain).
+2. Install Bun, then run `bun ci` (uses the committed `bun.lock`; Electron and native node-pty rebuild require the desktop build toolchain).
 3. `npm run dev`, then open the **자동개발** panel.
 4. Choose a **Git repository root**, set a future deadline at least 5 minutes away, add a bounded task, explicitly enable workspace editing if needed, then press Start.
 5. Inspect the local working tree and validation before using `npm run package:win` on a Windows x64 system.
