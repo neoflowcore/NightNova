@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
+  it('supports user-defined seconds, minutes and hours', () => {
+    expect(secondsFromIntervalInput(15, 'seconds')).toBe(15)
+    expect(secondsFromIntervalInput(30, 'minutes')).toBe(1800)
+    expect(secondsFromIntervalInput(1, 'hours')).toBe(3600)
+    expect(intervalInputFromSeconds(1800)).toEqual({amount:30,unit:'minutes'})
+    expect(assertChatWatchSeconds(3600, 'resume')).toBe(3600)
+    expect(() => assertChatWatchSeconds(1, 'resume')).toThrow()
+    expect(() => assertChatWatchSeconds(0, 'rotation')).toThrow()
+  })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')
     expect(nextWatchedTabId('t2',['t1','t2','t3'])).toBe('t3')
@@ -24,7 +33,7 @@ describe('thinking macro: displayed tab rotation', () => {
     }
     const config=createChatWatchSnapshot().config
     const result=decideChatWatch(page,{
-      now:30_000,lastProgressAt:0,intervalMinutes:config.intervalMinutes,
+      now:30_000,lastProgressAt:0,intervalSeconds:config.intervalSeconds,
       sentCount:0,maxAutoMessages:config.maxAutoMessages,
       awaitingResponse:false,stableObservations:3,stopOn:config.stopOn
     })

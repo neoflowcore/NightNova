@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  DEFAULT_CHAT_WATCH_ROTATION,
+  DEFAULT_CHAT_WATCH_ROTATION, assertChatWatchSeconds,
   type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchRotation
 } from '../../shared/chatgpt-watch'
 import { ChatGptConversationWatch } from './service'
@@ -71,8 +71,11 @@ export class ChatGptWatchHub {
   private validateRotation(patch: Partial<ChatWatchRotation>): ChatWatchRotation {
     return {
       enabled: typeof patch.enabled === 'boolean' ? patch.enabled : this.rotation.enabled,
-      seconds: patch.seconds === 15 || patch.seconds === 30 || patch.seconds === 60
-        ? patch.seconds : this.rotation.seconds
+      // Backward compatibility: 0.1.8 persisted the old "seconds" field.
+      intervalSeconds: assertChatWatchSeconds(
+        patch.intervalSeconds ?? (patch as Partial<ChatWatchRotation> & { seconds?: number }).seconds ??
+        this.rotation.intervalSeconds, 'rotation'
+      )
     }
   }
 

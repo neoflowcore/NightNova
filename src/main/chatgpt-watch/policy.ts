@@ -68,7 +68,7 @@ export type WatchDecision =
 export interface WatchDecisionContext {
   now: number
   lastProgressAt: number
-  intervalMinutes: 10 | 30
+  intervalSeconds: number
   sentCount: number
   maxAutoMessages: number
   awaitingResponse: boolean
@@ -81,7 +81,7 @@ export function decideChatWatch(
   ctx: WatchDecisionContext
 ): WatchDecision {
   const age = Math.max(0, ctx.now - ctx.lastProgressAt)
-  const threshold = ctx.intervalMinutes * 60_000
+  const threshold = ctx.intervalSeconds * 1000
   if (!isChatGptConversation(page.url)) return { type: 'needs-human', reason: 'ChatGPT 대화 주소가 아닙니다.' }
   if (page.needsLogin || page.challenge) {
     return { type: 'needs-human', reason: 'ChatGPT 로그인 또는 사용자 인증이 필요합니다.' }

@@ -4,7 +4,7 @@ import type { ChatWatchConfig, ChatWatchRotation } from '../../shared/chatgpt-wa
 
 export function registerChatGptWatchIpc(
   getWindow: () => BrowserWindow | null
-): ChatGptConversationWatch {
+): ChatGptWatchHub {
   const watch = new ChatGptWatchHub(getWindow, (state) => {
     const win = getWindow()
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {

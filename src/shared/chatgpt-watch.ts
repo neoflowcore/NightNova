@@ -4,10 +4,37 @@
 export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human'
 export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
+/** All stored durations are integer SECONDS; UI may express seconds, minutes or hours. */
+export type ChatWatchTimeUnit = 'seconds' | 'minutes' | 'hours'
+export type ChatWatchTimeKind = 'rotation' | 'check' | 'resume'
+export const CHAT_WATCH_INTERVAL_LIMITS: Record<ChatWatchTimeKind, { min: number; max: number }> = {
+  rotation: { min: 5, max: 86_400 },
+  check: { min: 5, max: 86_400 },
+  resume: { min: 15, max: 604_800 }
+}
+export function assertChatWatchSeconds(value: unknown, kind: ChatWatchTimeKind): number {
+  const limits = CHAT_WATCH_INTERVAL_LIMITS[kind]
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) ||
+      value < limits.min || value > limits.max) {
+    throw new Error(kind + ' 간격은 ' + limits.min + '~' + limits.max + '초 사이의 정수여야 합니다.')
+  }
+  return value
+}
+export function intervalInputFromSeconds(seconds: number): { amount: number; unit: ChatWatchTimeUnit } {
+  if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: 'hours' }
+  if (seconds % 60 === 0) return { amount: seconds / 60, unit: 'minutes' }
+  return { amount: seconds, unit: 'seconds' }
+}
+export function secondsFromIntervalInput(amount: number, unit: ChatWatchTimeUnit): number {
+  const multiplier = { seconds: 1, minutes: 60, hours: 3600 }[unit]
+  if (!Number.isFinite(amount) || amount <= 0) return NaN
+  return Math.round(amount * multiplier)
+}
+
 export interface ChatWatchRotation {
   /** Automatically show the work taking place in each monitored browser tab. */
   enabled: boolean
-  seconds: 15 | 30 | 60
+  intervalSeconds: number
 }
 
 export interface ChatWatchDashboard {
@@ -36,8 +63,10 @@ export interface ChatWatchStopConditions {
 }
 
 export interface ChatWatchConfig {
-  /** Idle/stall threshold; a cheap read-only health check runs every 30 sec. */
-  intervalMinutes: 10 | 30
+  /** Idle duration before a potential resume; independent per conversation. */
+  intervalSeconds: number
+  /** Read-only status polling interval; independent per conversation. */
+  checkIntervalSeconds: number
   /** Maximum messages sent in one explicitly armed supervision session. */
   maxAutoMessages: number
   /** User-editable text; never inferred from website-provided instructions. */
@@ -96,10 +125,11 @@ export const DEFAULT_CHAT_WATCH_PROMPT = [
   '결제, 새로운 권한 부여, 보안 인증을 우회하거나 임의로 수행하지 마. 이미 답변한 질문을 다시 묻지 마.'
 ].join(' ')
 
-export const DEFAULT_CHAT_WATCH_ROTATION: ChatWatchRotation = { enabled: true, seconds: 30 }
+export const DEFAULT_CHAT_WATCH_ROTATION: ChatWatchRotation = { enabled: true, intervalSeconds: 30 }
 
 export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
-  intervalMinutes: 10,
+  intervalSeconds: 600,
+  checkIntervalSeconds: 30,
   maxAutoMessages: 12,
   resumePrompt: DEFAULT_CHAT_WATCH_PROMPT,
   stopOn: {

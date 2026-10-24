@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { Tab } from '@/stores/tabs'
-import type { ChatWatchConfig, ChatWatchDashboard } from '../../../shared/chatgpt-watch'
+import { intervalInputFromSeconds, secondsFromIntervalInput, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
 
 export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webContentsId: number | null }) {
   const [state, setState] = useState<ChatWatchDashboard | null>(null)
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
   const [drafts, setDrafts] = useState<Record<number,string>>({})
+  const [intervalEdits, setIntervalEdits] = useState<Record<string, { amount: number; unit: ChatWatchTimeUnit }>>({})
   useEffect(() => {
     let mounted = true
     void window.rev.chatWatch.state().then(v => { if (mounted) setState(v) }).catch(e => { if (mounted) setError(String(e)) })
@@ -26,6 +27,30 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     if (!webContentsId) return
     void run(() => window.rev.chatWatch.configure(webContentsId, patch))
   }
+  const timeField = (label: string, key: string, seconds: number, kind: ChatWatchTimeKind, apply: (value:number)=>void, disabled = false) => {
+    const draft = intervalEdits[key] ?? intervalInputFromSeconds(seconds)
+    return <div className="nightnova-wb-line" key={key}>
+      <label>{label}
+        <input type="number" min={1} step={1} disabled={disabled || working} value={draft.amount}
+          onChange={e => setIntervalEdits(prev => ({ ...prev, [key]: { ...draft, amount: Number(e.target.value) } }))}/>
+      </label>
+      <select aria-label={label + ' 단위'} disabled={disabled || working} value={draft.unit}
+        onChange={e => setIntervalEdits(prev => ({ ...prev, [key]: { ...draft, unit: e.target.value as ChatWatchTimeUnit } }))}>
+        <option value="seconds">초</option><option value="minutes">분</option><option value="hours">시간</option>
+      </select>
+      <button type="button" disabled={disabled || working} onClick={() => {
+        const value = secondsFromIntervalInput(draft.amount, draft.unit)
+        const min = kind === 'resume' ? 15 : 5
+        const max = kind === 'resume' ? 604800 : 86400
+        if (!Number.isSafeInteger(value) || value < min || value > max) {
+          setError(label + '은 ' + min + '~' + max + '초 범위로 설정하세요.')
+          return
+        }
+        setIntervalEdits(prev => { const next = {...prev}; delete next[key]; return next })
+        apply(value)
+      }}>적용</button>
+    </div>
+  }
   const boxes = [
     ['login', '로그인 요청에서 중단'],
     ['approval', '승인 요청에서 중단'],
@@ -41,12 +66,10 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
           onChange={e => void run(() => window.rev.chatWatch.rotation({ enabled:e.target.checked }))}/>
         작업 탭 자동 화면 순환
       </label>
-      <label>전환 간격
-        <select disabled={working} value={state.rotation.seconds} onChange={e => void run(() => window.rev.chatWatch.rotation({ seconds:Number(e.target.value) as 15|30|60 }))}>
-          <option value={15}>15초</option><option value={30}>30초</option><option value={60}>60초</option>
-        </select>
-      </label>
+
     </div>
+    {timeField('화면 자동 순환 간격', 'rotation', state.rotation.intervalSeconds, 'rotation',
+      value => void run(() => window.rev.chatWatch.rotation({intervalSeconds:value})))}
     <h4>프로젝트별 감독</h4>
     {targets.length === 0 && <p className="nightnova-wb-note">ChatGPT에서 기존 프로젝트 대화 탭을 먼저 열어주세요.</p>}
     {targets.map(t => {
@@ -70,13 +93,11 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     </div>
     <h4>현재 선택한 탭 설정</h4>
     {!config ? <p className="nightnova-wb-note">먼저 이 탭에서 감독 시작을 눌러주세요.</p> : <>
+      {timeField('자동 재개 판단 간격', 'resume-' + webContentsId, config.intervalSeconds, 'resume',
+        value => configure({intervalSeconds:value}), active)}
+      {timeField('상태 점검 간격', 'check-' + webContentsId, config.checkIntervalSeconds, 'check',
+        value => configure({checkIntervalSeconds:value}), active)}
       <div className="nightnova-wb-line">
-        <label>재개 판단 간격
-          <select disabled={active || working} value={config.intervalMinutes}
-            onChange={e => configure({intervalMinutes:Number(e.target.value) as 10|30})}>
-            <option value={10}>10분</option><option value={30}>30분</option>
-          </select>
-        </label>
         <label>자동 재개 최대 횟수
           <input type="number" min={1} max={24} disabled={active || working} value={config.maxAutoMessages}
             onChange={e => configure({maxAutoMessages:Number(e.target.value)})}/>

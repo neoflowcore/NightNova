@@ -3,13 +3,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  DEFAULT_CHAT_WATCH_CONFIG, createChatWatchSnapshot,
+  createChatWatchSnapshot, assertChatWatchSeconds,
   type ChatWatchConfig, type ChatWatchDomObservation, type ChatWatchSnapshot
 } from '../../shared/chatgpt-watch'
 import { isChatGptConversation, sameConversation, decideChatWatch } from './policy'
 import { CHAT_WATCH_INSPECT_SCRIPT, chatWatchSubmitScript } from './dom'
 
-const POLL_INTERVAL_MS = 30_000
 const MAX_INSPECT_TEXT = 4000
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
@@ -79,9 +78,17 @@ export class ChatGptConversationWatch {
     const current = this.stateData.config
     const prompt = typeof patch.resumePrompt === 'string' ? patch.resumePrompt.trim() : current.resumePrompt
     if (!prompt || prompt.length > 3500) throw new Error('재개 프롬프트를 1~3500자로 설정하세요.')
+    // Load old saved intervalMinutes values without silently changing the user's
+    // 10/30-minute setting when upgrading from NightNova 0.1.8.
+    const legacy = patch as Partial<ChatWatchConfig> & { intervalMinutes?: number }
+    const resume = patch.intervalSeconds ?? (
+      typeof legacy.intervalMinutes === 'number' ? legacy.intervalMinutes * 60 : current.intervalSeconds
+    )
     return {
-      intervalMinutes: patch.intervalMinutes === 30 ? 30 :
-        patch.intervalMinutes === 10 ? 10 : current.intervalMinutes,
+      intervalSeconds: assertChatWatchSeconds(resume, 'resume'),
+      checkIntervalSeconds: assertChatWatchSeconds(
+        patch.checkIntervalSeconds ?? current.checkIntervalSeconds, 'check'
+      ),
       maxAutoMessages: typeof patch.maxAutoMessages === 'number' && Number.isFinite(patch.maxAutoMessages)
         ? Math.max(1, Math.min(24, Math.floor(patch.maxAutoMessages))) : current.maxAutoMessages,
       resumePrompt: prompt,
@@ -194,10 +201,11 @@ export class ChatGptConversationWatch {
     this.stableChecks = 0
     this.updatePage(page)
     await this.persist()
-    this.timer = setInterval(() => { void this.check() }, POLL_INTERVAL_MS)
+    this.timer = setInterval(() => { void this.check() }, this.stateData.config.checkIntervalSeconds * 1000)
     this.timer.unref?.()
     this.addLog('info', 'ChatGPT 대화 감독 시작. 자동 재개 간격: ' +
-      this.stateData.config.intervalMinutes + '분. 선택된 요청 조건만 중단합니다. 실제 로그인·인증 화면은 반드시 사용자 처리가 필요합니다.')
+      this.stateData.config.intervalSeconds + '초. 상태 점검 간격: ' +
+      this.stateData.config.checkIntervalSeconds + '초. 선택된 요청 조건만 중단합니다. 실제 로그인·인증 화면은 반드시 사용자 처리가 필요합니다.')
     return this.state()
   }
 
@@ -274,7 +282,7 @@ export class ChatGptConversationWatch {
       const decision = decideChatWatch(page, {
         now: Date.now(),
         lastProgressAt: this.stateData.lastProgressAt ?? Date.now(),
-        intervalMinutes: this.stateData.config.intervalMinutes,
+        intervalSeconds: this.stateData.config.intervalSeconds,
         sentCount: this.stateData.sentCount,
         maxAutoMessages: this.stateData.config.maxAutoMessages,
         awaitingResponse: this.stateData.awaitingResponse,
@@ -287,7 +295,7 @@ export class ChatGptConversationWatch {
       }
       // Inspection is background-safe. Real prompt submission is intentionally
       // tied to the visible tab, so the operator can WATCH the macro work.
-      // The UI automatically rotates visible ChatGPT projects every 15/30/60s.
+      // The UI rotates visible ChatGPT projects at the user-configured interval.
       if (decision.type === 'send' && this.maySendFromTab(wc.id)) {
         await this.sendOnce(wc, page)
       }

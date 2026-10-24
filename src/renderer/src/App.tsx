@@ -65,9 +65,9 @@ function App() {
       const ids = tabs.filter(t => watchDashboard.sessions.some(s => s.webContentsId === t.webContentsId && s.snapshot.status === 'watching')).map(t => t.id)
       const current = ids.indexOf(activeId)
       if (ids.length > 1) selectTab(ids[(current + 1) % ids.length])
-    }, watchDashboard.rotation.seconds * 1000)
+    }, watchDashboard.rotation.intervalSeconds * 1000)
     return () => clearInterval(interval)
-  }, [watchDashboard?.rotation.enabled, watchDashboard?.rotation.seconds, watchDashboard?.sessions.map(s=>s.webContentsId+':'+s.snapshot.status).join('|')])
+  }, [watchDashboard?.rotation.enabled, watchDashboard?.rotation.intervalSeconds, watchDashboard?.sessions.map(s=>s.webContentsId+':'+s.snapshot.status).join('|')])
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)

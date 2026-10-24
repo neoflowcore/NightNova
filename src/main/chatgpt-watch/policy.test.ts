@@ -11,7 +11,7 @@ const base: ChatWatchDomObservation = {
 const defaultStops: ChatWatchStopConditions = {
   login: false, approval: false, manualVerification: false, payment: true
 }
-const context = { now: 601000, lastProgressAt: 0, intervalMinutes: 10 as const,
+const context = { now: 601000, lastProgressAt: 0, intervalSeconds: 600,
   sentCount: 0, maxAutoMessages: 12, awaitingResponse: false,
   stableObservations: 3, stopOn: defaultStops }
 describe('ChatGPT supervisor configurable stop categories', () => {
