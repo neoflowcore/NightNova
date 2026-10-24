@@ -54,6 +54,20 @@ function App() {
   const activeId = useTabsStore((s) => s.activeId)
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
+  const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
+  useEffect(() => window.rev.chatWatch.onState(setWatchDashboard), [])
+  useEffect(() => { void window.rev.chatWatch.state().then(setWatchDashboard).catch(() => {}) }, [])
+  useEffect(() => { void window.rev.chatWatch.visible(activeTab?.webContentsId ?? null).catch(() => {}) }, [activeTab?.webContentsId])
+  useEffect(() => {
+    if (!watchDashboard?.rotation.enabled || watchDashboard.sessions.filter(s => s.snapshot.status === 'watching').length < 2) return
+    const interval = setInterval(() => {
+      const { tabs, activeId, selectTab } = useTabsStore.getState()
+      const ids = tabs.filter(t => watchDashboard.sessions.some(s => s.webContentsId === t.webContentsId && s.snapshot.status === 'watching')).map(t => t.id)
+      const current = ids.indexOf(activeId)
+      if (ids.length > 1) selectTab(ids[(current + 1) % ids.length])
+    }, watchDashboard.rotation.seconds * 1000)
+    return () => clearInterval(interval)
+  }, [watchDashboard?.rotation.enabled, watchDashboard?.rotation.seconds, watchDashboard?.sessions.map(s=>s.webContentsId+':'+s.snapshot.status).join('|')])
 
   const browserMode = useBrowserModeStore((s) => s.mode)
   const setBrowserMode = useBrowserModeStore((s) => s.setMode)
@@ -901,7 +915,7 @@ function App() {
             <NightnovaWorkbench />
           </div>
           <div style={{ flex: 1, minHeight: 0, display: agentMode === 'watch' ? 'flex' : 'none', flexDirection: 'column', overflowY: 'auto', padding: 12 }}>
-            <ChatGptWatchPanel webContentsId={activeTab?.webContentsId ?? null}/>
+            <ChatGptWatchPanel tabs={tabs} webContentsId={activeTab?.webContentsId ?? null}/>
           </div>
         </aside>
 

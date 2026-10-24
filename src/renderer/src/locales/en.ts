@@ -6,13 +6,13 @@ export const en = {
   'agent.terminal': 'Terminal (CLI)',
 
   // Terminal (CLI) onboarding
-  'cli.title': 'Rever in your terminal',
-  'cli.desc': "Run Claude Code in a real terminal, already wired to Rever's browser and traffic tools.",
+  'cli.title': 'NightNova in your terminal',
+  'cli.desc': "Run Claude Code in a real terminal, already wired to NightNova's browser and traffic tools.",
   'cli.start': 'Start Claude Code →',
-  'cli.skillPrompt': 'Want /rever in any Claude Code session? Run this once:',
+  'cli.skillPrompt': 'Want the upstream /rever compatibility skill? Run this once:',
   'cli.copy': 'Copy',
   'cli.copied': 'Copied ✓',
-  'cli.installed': '✓ /rever skill already installed',
+  'cli.installed': '✓ Upstream /rever compatibility skill installed',
   'cli.requires': 'Requires the claude CLI (your own subscription). macOS/Linux.',
   'cli.guide': 'Guide',
   'cli.guideTitle': 'Show CLI mode guide',
@@ -91,7 +91,7 @@ export const en = {
   'settings.dialogAuto': 'Answer page dialogs while the agent works',
   'settings.dialogAutoHint': 'Otherwise alert / confirm show up for you to answer. Contents are logged.',
   'settings.downloadAsk': 'Ask where to save downloads',
-  'settings.downloadAskHint': 'Off: saved to Downloads/Rever without a dialog, so the agent never gets stuck.',
+  'settings.downloadAskHint': 'Off: saved to Downloads/NightNova without a dialog, so the agent never gets stuck.',
   'panel.consoleInput': 'Run JavaScript in this tab (Enter to run, Shift+Enter for a new line)',
   'panel.noExceptions': 'No exceptions',
   'panel.noWs': 'No WS connections',
@@ -170,7 +170,7 @@ export const en = {
 
   // First-run agent onboarding
   'onboard.title': 'Connect your AI provider',
-  'onboard.desc': 'Rever drives the browser through an AI agent. Use a subscription you already have, or paste an API key.',
+  'onboard.desc': 'NightNova drives the browser through an AI agent. Use a subscription you already have, or paste an API key.',
   'onboard.scanning': 'Checking your machine…',
   'onboard.ready': '{n} ready',
   'onboard.use': 'Use',
@@ -273,7 +273,7 @@ export const en = {
 
   'tools.profile.label': 'Tools',
   'tools.profile.browse': 'Browse',
-  'tools.profile.reverse': 'Reverse',
+  'tools.profile.reverse': 'NightNovase',
   'tools.profile.probe': 'Probe',
   'tools.profile.tip.browse': 'Page and DOM tools. API reversing tools are hidden.',
   'tools.profile.tip.reverse': 'Scripts, crypto, replay, and client export.',

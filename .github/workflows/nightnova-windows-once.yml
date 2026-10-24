@@ -1,5 +1,5 @@
 name: Nightnova Windows One-Shot
-# Release gate revision 5: prefer Windows npm .cmd shims; ACP spawn fix and 0.1.7 installer.
+# Release gate revision 6: thinking macro, multi-conversation watch, rotating UI and 0.1.8 installer.
 on:
   push:
     branches:
@@ -52,7 +52,7 @@ jobs:
         run: npm run typecheck
       - name: Focused Nightnova runtime tests
         shell: pwsh
-        run: npx --no-install vitest run src/main/nightnova src/main/acp-detect.test.ts
+        run: npx --no-install vitest run src/main/nightnova src/main/acp-detect.test.ts src/main/chatgpt-watch
       - name: Build Electron and Windows NSIS
         shell: pwsh
         run: npm run package:win

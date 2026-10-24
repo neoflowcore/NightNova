@@ -22,7 +22,10 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
     generating,
     online: navigator.onLine,
-    composerReady: !!editor && visible(editor),
+    // A hidden webview can have a working editor but no visible layout.
+    // Supervision can inspect the editor while hidden; send is separately
+    // restricted by main process to the tab that the operator is viewing.
+    composerReady: !!editor && editor.isConnected && !editor.hasAttribute('disabled'),
     hasDraft: !!draftText.trim(),
     needsLogin: !!password && visible(password),
     challenge: !!challenge && visible(challenge),

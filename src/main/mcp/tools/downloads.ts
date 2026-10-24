@@ -10,7 +10,7 @@ export function registerDownloadTools(mcp: McpServer) {
     'list_downloads',
     {
       description:
-        'List files the page downloaded (newest last): filename, url, mime, bytes, state (progressing/completed/cancelled/interrupted) and savePath. Downloads are saved to ~/Downloads/Rever without a save dialog unless the user turned on "ask where to save".',
+        'List files the page downloaded (newest last): filename, url, mime, bytes, state (progressing/completed/cancelled/interrupted) and savePath. Downloads are saved to ~/Downloads/NightNova without a save dialog unless the user turned on "ask where to save".',
       inputSchema: { limit: z.number().int().positive().max(100).optional().describe('Default 20') }
     },
     async ({ limit }) =>

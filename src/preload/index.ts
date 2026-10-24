@@ -4,7 +4,7 @@ import type { CliCommand, CliData } from '../shared/cli-spec'
 import type { PageEvent } from '../main/ai-events'
 import type { DownloadRecord } from '../main/downloads'
 import type { NightnovaConfig, NightnovaDoctor, NightnovaSnapshot, NightnovaTaskTemplate, NightnovaReview } from '../shared/nightnova'
-import type { ChatWatchConfig, ChatWatchSnapshot } from '../shared/chatgpt-watch'
+import type { ChatWatchConfig, ChatWatchDashboard, ChatWatchRotation } from '../shared/chatgpt-watch'
 
 export type { PageEvent, DownloadRecord }
 
@@ -231,13 +231,19 @@ export interface StoredRequestSummary {
 
 const api = {
   chatWatch: {
-    state: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:state'),
-    configure: (patch: Partial<ChatWatchConfig>): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:configure', patch),
-    start: (id: number): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:start', id),
-    pause: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:pause'),
-    stop: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:stop'),
-    onState: (callback: (state: ChatWatchSnapshot) => void): (() => void) => {
-      const listener = (_event: unknown, state: ChatWatchSnapshot) => callback(state)
+    state: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:state'),
+    configure: (id: number, patch: Partial<ChatWatchConfig>): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:configure', id, patch),
+    rotation: (patch: Partial<ChatWatchRotation>): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:rotation', patch),
+    visible: (id: number | null): Promise<void> => ipcRenderer.invoke('chatwatch:visible', id),
+    start: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:start', id),
+    startMany: (ids: number[]): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:start-many', ids),
+    inspect: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:inspect', id),
+    pause: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:pause', id),
+    stop: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:stop', id),
+    pauseAll: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:pause-all'),
+    stopAll: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:stop-all'),
+    onState: (callback: (state: ChatWatchDashboard) => void): (() => void) => {
+      const listener = (_event: unknown, state: ChatWatchDashboard) => callback(state)
       ipcRenderer.on('chatwatch:state', listener)
       return () => ipcRenderer.removeListener('chatwatch:state', listener)
     }

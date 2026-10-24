@@ -1,4 +1,4 @@
-# Contributing to rever-browser
+# Contributing to NightNova
 
 Thanks for taking the time to contribute.
 

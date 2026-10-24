@@ -6,7 +6,7 @@ import { emitPageEvent } from './ai-events'
 
 // Downloads from browsed pages. Without a save path Electron opens the macOS
 // save dialog, which the agent cannot click, so by default every download is
-// saved straight to ~/Downloads/Rever and recorded here for the agent and UI.
+// saved straight to ~/Downloads/NightNova and recorded here for the agent and UI.
 
 export interface DownloadRecord {
   id: number
@@ -41,7 +41,7 @@ export function setAskWhereToSave(v: boolean): void {
 }
 
 export function downloadDir(): string {
-  return path.join(app.getPath('downloads'), 'Rever')
+  return path.join(app.getPath('downloads'), 'NightNova')
 }
 
 /** `name`, or `name (n)` before the extension, whichever is free. */

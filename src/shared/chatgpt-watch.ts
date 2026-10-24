@@ -4,6 +4,26 @@
 export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human'
 export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
+export interface ChatWatchRotation {
+  /** Automatically show the work taking place in each monitored browser tab. */
+  enabled: boolean
+  seconds: 15 | 30 | 60
+}
+
+export interface ChatWatchDashboard {
+  version: 2
+  rotation: ChatWatchRotation
+  sessions: Array<{ webContentsId: number; url: string; snapshot: ChatWatchSnapshot }>
+  errors: string[]
+}
+
+/** Visible tabs follow the user-facing tab strip order, not watch-start order. */
+export function nextWatchedTabId(currentTabId: string, orderedIds: string[]): string | null {
+  if (orderedIds.length === 0) return null
+  const index = orderedIds.indexOf(currentTabId)
+  return orderedIds[(index + 1) % orderedIds.length]
+}
+
 export interface ChatWatchStopConditions {
   /** Stop on a textual request to sign in (not a real login page). */
   login: boolean
@@ -76,6 +96,8 @@ export const DEFAULT_CHAT_WATCH_PROMPT = [
   '결제, 새로운 권한 부여, 보안 인증을 우회하거나 임의로 수행하지 마. 이미 답변한 질문을 다시 묻지 마.'
 ].join(' ')
 
+export const DEFAULT_CHAT_WATCH_ROTATION: ChatWatchRotation = { enabled: true, seconds: 30 }
+
 export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
   intervalMinutes: 10,
   maxAutoMessages: 12,
@@ -92,7 +114,7 @@ export function createChatWatchSnapshot(): ChatWatchSnapshot {
   return {
     version: 1,
     status: 'off',
-    config: { ...DEFAULT_CHAT_WATCH_CONFIG },
+    config: { ...DEFAULT_CHAT_WATCH_CONFIG, stopOn: { ...DEFAULT_CHAT_WATCH_CONFIG.stopOn } },
     targetUrl: null,
     webContentsId: null,
     startedAt: null,

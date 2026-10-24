@@ -20,8 +20,9 @@ function fingerprint(page: ChatWatchDomObservation): string {
     .digest('hex')
 }
 
-function getSavePath(): string {
-  return path.join(app.getPath('userData'), 'nightnova', 'chatgpt-watch-v1.json')
+function getSavePath(storageKey: string): string {
+  const filename = storageKey === 'default' ? 'chatgpt-watch-v1.json' : 'chatgpt-watch-' + storageKey + '.json'
+  return path.join(app.getPath('userData'), 'nightnova', filename)
 }
 
 export class ChatGptConversationWatch {
@@ -36,7 +37,10 @@ export class ChatGptConversationWatch {
 
   constructor(
     private readonly mainWindow: () => BrowserWindow | null,
-    private readonly onUpdate: (snapshot: ChatWatchSnapshot) => void
+    private readonly onUpdate: (snapshot: ChatWatchSnapshot) => void,
+    private readonly storageKey: string = 'default',
+    /** Only submit from the currently displayed primary tab. Hidden tabs may be inspected. */
+    private readonly maySendFromTab: (webContentsId: number) => boolean = () => true
   ) {}
 
   state(): ChatWatchSnapshot { return clone(this.stateData) }
@@ -52,7 +56,7 @@ export class ChatGptConversationWatch {
     if (!this.starting) {
       this.starting = (async () => {
         try {
-          const raw = await readFile(getSavePath(), 'utf8')
+          const raw = await readFile(getSavePath(this.storageKey), 'utf8')
           if (raw.length > 25_000) throw new Error('설정 크기 제한 초과')
           const saved = JSON.parse(raw) as { config?: Partial<ChatWatchConfig> }
           if (saved && saved.config) this.stateData.config = this.validateConfig(saved.config)
@@ -103,7 +107,7 @@ export class ChatGptConversationWatch {
       savedAt: Date.now()
     }, null, 2)
     this.saving = this.saving.catch(() => undefined).then(async () => {
-      const target = getSavePath()
+      const target = getSavePath(this.storageKey)
       await mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
       const tmp = target + '-' + randomUUID() + '.tmp'
       await writeFile(tmp, data, { encoding: 'utf8', mode: 0o600 })
@@ -281,7 +285,12 @@ export class ChatGptConversationWatch {
         await this.humanGate(decision.reason)
         return
       }
-      if (decision.type === 'send') await this.sendOnce(wc, page)
+      // Inspection is background-safe. Real prompt submission is intentionally
+      // tied to the visible tab, so the operator can WATCH the macro work.
+      // The UI automatically rotates visible ChatGPT projects every 15/30/60s.
+      if (decision.type === 'send' && this.maySendFromTab(wc.id)) {
+        await this.sendOnce(wc, page)
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       await this.humanGate('대화 상태 판독 실패: ' + reason.slice(0, 180))
@@ -293,8 +302,9 @@ export class ChatGptConversationWatch {
   private async sendOnce(wc: WebContents, expected: ChatWatchDomObservation): Promise<void> {
     // Two-stage safety gate: inspect again immediately before doing anything
     // irreversible. An assistant reply or a user draft invalidates the send.
+    if (!this.maySendFromTab(wc.id)) return
     const fresh = await this.inspectGuest(this.activeGuest())
-    if (fingerprint(fresh) !== fingerprint(expected) ||
+    if (!this.maySendFromTab(wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
         fresh.userCount !== expected.userCount || fresh.generating ||
         fresh.hasDraft || fresh.needsLogin || fresh.challenge || !fresh.online ||
         !fresh.composerReady) return
