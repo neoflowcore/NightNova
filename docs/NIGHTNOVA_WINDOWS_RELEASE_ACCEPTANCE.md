@@ -39,3 +39,6 @@ If the hosted job cannot run because billing/actions are disabled, use this loca
 
 ## Cost controls
 This project has a strict Action Economy budget. Only one short hosted Windows job is defined. There is no workflow for every push, no matrix, and no background scheduled builds. Artifacts expire after one day. Re-run only when explicitly requested. 
+
+## CI publishing safety
+The Windows NSIS script uses `--publish never` explicitly. GitHub Actions receives no publishing token and only uploads the generated EXE plus SHA256 metadata with 1-day retention.

@@ -16,7 +16,7 @@
     "test": "vitest run",
     "e2e": "electron-vite build && playwright test -c e2e/playwright.config.ts",
     "prebuild": "node scripts/gen-icons.mjs",
-    "package:win": "npm run build && electron-builder --win nsis --x64",
+    "package:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "predev": "node scripts/gen-icons.mjs",
     "release:manifest": "node scripts/nightnova-release-manifest.mjs",
     "release:prune": "node scripts/nightnova-prune-artifacts.mjs",

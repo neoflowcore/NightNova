@@ -1,5 +1,5 @@
 name: Nightnova Windows One-Shot
-# Release gate revision 3: detect multiline ACP completion markers.
+# Release gate revision 4: explicit no-publish NSIS packaging; artifact only.
 on:
   push:
     branches:
