@@ -1,0 +1,124 @@
+import type { ChatWatchDomObservation, ChatWatchStopConditions } from '../../shared/chatgpt-watch'
+
+export function isChatGptConversation(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' ||
+        !['chatgpt.com', 'chat.openai.com'].includes(u.hostname)) return false
+    // Restrict to a concrete existing conversation, not a home page, login,
+    // arbitrary website, or a different chat selected during supervision.
+    return /(?:^|\/)c\/[a-zA-Z0-9-]{12,}(?:\/|$)/.test(u.pathname)
+  } catch {
+    return false
+  }
+}
+
+export function sameConversation(a: string, b: string): boolean {
+  try {
+    const first = new URL(a)
+    const second = new URL(b)
+    return first.hostname === second.hostname &&
+      first.protocol === second.protocol &&
+      first.pathname.replace(/\/$/, '') === second.pathname.replace(/\/$/, '')
+  } catch {
+    return false
+  }
+}
+
+export type ChatWatchActionCategory = keyof ChatWatchStopConditions
+
+/**
+ * Detect concrete requests for the operator, not ordinary mentions of
+ * "login" or "manual tests" in code comments. An unchecked box only disables
+ * pausing on the request text; it never fabricates approval or test results.
+ */
+export function detectChatWatchActionRequests(text: string): ChatWatchActionCategory[] {
+  const tail = text.slice(-2700)
+  const wanted: ChatWatchActionCategory[] = []
+  const add = (category: ChatWatchActionCategory, matched: boolean): void => {
+    if (matched) wanted.push(category)
+  }
+  add('payment',
+    /(?:결제|구매|유료\s*결제|과금\s*승인).{0,52}(?:필요|진행|완료|해\s*주|승인|요청)/i.test(tail) ||
+    /(?:pay|purchase|payment|billing).{0,55}(?:approve|confirm|required|needed|complete)/i.test(tail))
+  add('login',
+    /(?:로그인|인증|2단계\s*인증|계정\s*연결).{0,60}(?:필요|해\s*주|해\s*야|진행|요청)/i.test(tail) ||
+    /(?:please|you\s+need\s+to|requires?)\s+(?:manually\s+)?(?:log\s*in|sign\s*in|authenticate)/i.test(tail))
+  add('approval',
+    /(?:권한\s*승인|접속\s*승인|배포\s*승인|사용자\s*승인|승인\s*버튼|허가).{0,52}(?:필요|해\s*주|해\s*야|진행|요청)/i.test(tail) ||
+    /(?:please|you\s+need\s+to|requires?)\s+(?:manually\s+)?(?:approve|grant\s+permission)/i.test(tail))
+  add('manualVerification',
+    /(?:수기|수동|직접|실기).{0,12}(?:검증|점검|확인|테스트|조작|실행).{0,55}(?:필요|해\s*주|해\s*야|진행|요청)/i.test(tail) ||
+    /(?:manual|human)\s+(?:verification|approval\s+review|test|testing|intervention|review)\s+(?:is\s+)?(?:required|needed)/i.test(tail))
+  return wanted
+}
+
+export function requestedChatWatchPause(
+  text: string,
+  stopOn: ChatWatchStopConditions
+): ChatWatchActionCategory | null {
+  return detectChatWatchActionRequests(text).find((category) => stopOn[category]) ?? null
+}
+
+export type WatchDecision =
+  | { type: 'wait'; reason: string }
+  | { type: 'send'; reason: string }
+  | { type: 'needs-human'; reason: string }
+
+export interface WatchDecisionContext {
+  now: number
+  lastProgressAt: number
+  intervalMinutes: 10 | 30
+  sentCount: number
+  maxAutoMessages: number
+  awaitingResponse: boolean
+  stableObservations: number
+  stopOn: ChatWatchStopConditions
+}
+
+export function decideChatWatch(
+  page: ChatWatchDomObservation,
+  ctx: WatchDecisionContext
+): WatchDecision {
+  const age = Math.max(0, ctx.now - ctx.lastProgressAt)
+  const threshold = ctx.intervalMinutes * 60_000
+  if (!isChatGptConversation(page.url)) return { type: 'needs-human', reason: 'ChatGPT 대화 주소가 아닙니다.' }
+  if (page.needsLogin || page.challenge) {
+    return { type: 'needs-human', reason: 'ChatGPT 로그인 또는 사용자 인증이 필요합니다.' }
+  }
+  if (!page.generating) {
+    const category = requestedChatWatchPause(page.lastAssistantText, ctx.stopOn)
+    if (category) {
+      const labels: Record<ChatWatchActionCategory, string> = {
+        login: '로그인 요청',
+        approval: '승인 요청',
+        manualVerification: '수기 검증 요청',
+        payment: '결제 요청'
+      }
+      return { type: 'needs-human', reason: '선택한 중단 조건에 도달했습니다: ' + labels[category] }
+    }
+  }
+  if (!page.online) return { type: 'wait', reason: '오프라인 상태로 네트워크 연결 복구를 대기합니다.' }
+  if (!page.assistantCount) return { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
+  if (page.generating) {
+    return age >= threshold
+      ? { type: 'needs-human', reason: 'ChatGPT가 응답 생성 중 장시간 멈춘 것으로 보입니다. 중복 프롬프트를 전송하지 않습니다.' }
+      : { type: 'wait', reason: 'ChatGPT가 응답을 생성하는 중입니다.' }
+  }
+  if (ctx.awaitingResponse) {
+    return age >= threshold
+      ? { type: 'needs-human', reason: '이전 자동 프롬프트의 답변을 확인하지 못했습니다. 중복 전송 방지를 위해 중단합니다.' }
+      : { type: 'wait', reason: '직전 자동 프롬프트에 대한 응답을 기다립니다.' }
+  }
+  if (!page.composerReady) {
+    return { type: 'needs-human', reason: 'ChatGPT 입력창을 찾을 수 없습니다. 웹페이지 변경 또는 계정 상태 확인이 필요합니다.' }
+  }
+  if (page.hasDraft) return { type: 'needs-human', reason: '사용자가 작성한 미전송 메시지가 있습니다. 덮어쓰지 않습니다.' }
+  if (ctx.sentCount >= ctx.maxAutoMessages) {
+    return { type: 'needs-human', reason: '설정한 최대 자동 프롬프트 횟수에 도달했습니다.' }
+  }
+  if (ctx.stableObservations < 2 || age < threshold) {
+    return { type: 'wait', reason: '대화의 마지막 진행 이후 재개 판단 시각을 기다립니다.' }
+  }
+  return { type: 'send', reason: 'ChatGPT가 종료된 답변 상태로 설정 시간 동안 진행되지 않았습니다.' }
+}

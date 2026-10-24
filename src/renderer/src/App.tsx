@@ -17,6 +17,7 @@ import { PageEventToast } from '@/components/PageEventToast'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { NightnovaWorkbench } from '@/components/NightnovaWorkbench'
+import { ChatGptWatchPanel } from '@/components/ChatGptWatchPanel'
 import { NightnovaBrowserSplit } from '@/components/NightnovaBrowserSplit'
 import { TerminalPanel } from '@/components/chat/TerminalPanel'
 import { requestPermissionFromUser } from '@/ai/acp-permission'
@@ -883,6 +884,7 @@ function App() {
             <AgentModeTab label={t('agent.chat')} active={agentMode === 'acp'} onClick={() => setAgentMode('acp')} />
             <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
             <AgentModeTab label="자동개발" active={agentMode === 'nightnova'} onClick={() => setAgentMode('nightnova')} />
+            <AgentModeTab label="ChatGPT 감독" active={agentMode === 'watch'} onClick={() => setAgentMode('watch')} />
           </div>
           {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
               mode; mount the terminal only while selected so the PTY is killed
@@ -897,6 +899,9 @@ function App() {
           )}
           <div style={{ flex: 1, minHeight: 0, display: agentMode === 'nightnova' ? 'flex' : 'none', flexDirection: 'column' }}>
             <NightnovaWorkbench />
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: agentMode === 'watch' ? 'flex' : 'none', flexDirection: 'column', overflowY: 'auto', padding: 12 }}>
+            <ChatGptWatchPanel webContentsId={activeTab?.webContentsId ?? null}/>
           </div>
         </aside>
 

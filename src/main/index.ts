@@ -16,6 +16,7 @@ import {
 import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
 import { registerNightnovaIpc } from './nightnova/ipc'
+import { registerChatGptWatchIpc } from './chatgpt-watch/ipc'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -1018,9 +1019,11 @@ app.whenReady().then(() => {
   registerAcpIpc()
 
   const nightnova = registerNightnovaIpc(() => mainWindow)
+  const chatWatch = registerChatGptWatchIpc(() => mainWindow)
   let finishQuit = false
   app.on('before-quit', (event) => {
     if (finishQuit) return
+    chatWatch.close()
     const state = nightnova.state()
     if (state.status !== 'running' && state.status !== 'stopping') return
     event.preventDefault()

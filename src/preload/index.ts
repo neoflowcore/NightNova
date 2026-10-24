@@ -4,6 +4,7 @@ import type { CliCommand, CliData } from '../shared/cli-spec'
 import type { PageEvent } from '../main/ai-events'
 import type { DownloadRecord } from '../main/downloads'
 import type { NightnovaConfig, NightnovaDoctor, NightnovaSnapshot, NightnovaTaskTemplate, NightnovaReview } from '../shared/nightnova'
+import type { ChatWatchConfig, ChatWatchSnapshot } from '../shared/chatgpt-watch'
 
 export type { PageEvent, DownloadRecord }
 
@@ -229,6 +230,18 @@ export interface StoredRequestSummary {
 }
 
 const api = {
+  chatWatch: {
+    state: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:state'),
+    configure: (patch: Partial<ChatWatchConfig>): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:configure', patch),
+    start: (id: number): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:start', id),
+    pause: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:pause'),
+    stop: (): Promise<ChatWatchSnapshot> => ipcRenderer.invoke('chatwatch:stop'),
+    onState: (callback: (state: ChatWatchSnapshot) => void): (() => void) => {
+      const listener = (_event: unknown, state: ChatWatchSnapshot) => callback(state)
+      ipcRenderer.on('chatwatch:state', listener)
+      return () => ipcRenderer.removeListener('chatwatch:state', listener)
+    }
+  },
   nightnova: {
     state: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:state'),
     chooseWorkspace: (): Promise<NightnovaSnapshot> => ipcRenderer.invoke('nightnova:choose-workspace'),
