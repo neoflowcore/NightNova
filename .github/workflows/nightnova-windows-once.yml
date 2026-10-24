@@ -1,4 +1,5 @@
 name: Nightnova Windows One-Shot
+# Release gate revision 3: detect multiline ACP completion markers.
 on:
   push:
     branches:

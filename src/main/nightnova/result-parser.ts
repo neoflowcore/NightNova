@@ -9,7 +9,7 @@ const safeLine = (text: string): string => text.replace(/[\x00-\x1f\x7f]/g, ' ')
 
 export function parseNightnovaAgentResult(output: string): NightnovaAgentResult {
   const raw = output.slice(-60_000)
-  const result = raw.match(/^NIGHTNOVA_RESULT:\s*(done|blocked)\b/i)?.[1]?.toLowerCase()
+  const result = raw.match(/^NIGHTNOVA_RESULT:\s*(done|blocked)\b/im)?.[1]?.toLowerCase()
   const suggestion = raw.match(/^NIGHTNOVA_NEXT_TASK:\s*(.+)$/mi)?.[1] ?? ''
   const summary = raw.match(/^NIGHTNOVA_SUMMARY:\s*(.+)$/mi)?.[1] ??
     raw.split(/\r?\n/).filter(Boolean).slice(-6).join(' ')
