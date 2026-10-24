@@ -72,7 +72,10 @@ async function handshake(command: string): Promise<{ ok: true } | { ok: false; d
     child = spawn(command, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: agentEnv(command),
-      shell: process.platform === 'win32'
+      // Match the real session launcher. Never let cmd.exe implicitly
+      // resolve an extensionless POSIX shim during the health probe.
+      shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(command),
+      windowsHide: true
     }) as ChildProcessByStdio<Writable, Readable, Readable>
   } catch (e) {
     return { ok: false, detail: message(e) }

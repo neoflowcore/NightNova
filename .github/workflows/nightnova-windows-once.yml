@@ -1,5 +1,5 @@
 name: Nightnova Windows One-Shot
-# Release gate revision 4: explicit no-publish NSIS packaging; artifact only.
+# Release gate revision 5: prefer Windows npm .cmd shims; ACP spawn fix and 0.1.7 installer.
 on:
   push:
     branches:
@@ -52,7 +52,7 @@ jobs:
         run: npm run typecheck
       - name: Focused Nightnova runtime tests
         shell: pwsh
-        run: npx --no-install vitest run src/main/nightnova
+        run: npx --no-install vitest run src/main/nightnova src/main/acp-detect.test.ts
       - name: Build Electron and Windows NSIS
         shell: pwsh
         run: npm run package:win

@@ -24,10 +24,18 @@ export interface AgentProbeResult {
 
 const isWindows = platform() === 'win32'
 
-/** Windows PATHEXT values, lowercased, with '' for already-suffixed names. */
-function getWindowsExts(): string[] {
-  const raw = process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD'
-  return ['', ...raw.split(';').map((e) => e.toLowerCase()).filter(Boolean)]
+/**
+ * npm creates three Windows shims: an extensionless POSIX shell file,
+ * a PowerShell .ps1 file and a Windows .cmd launcher.
+ *
+ * A native Node spawn() cannot execute the extensionless POSIX shim on
+ * Windows (ENOENT). Never prefer that file, even if it exists and is first
+ * in the directory. Likewise, .ps1 must not be auto-selected.
+ * Only these four extensions can be spawned by our Windows ACP launcher.
+ */
+export function windowsAgentCandidates(bin: string): string[] {
+  if (/\.(?:exe|cmd|bat|com)$/i.test(bin)) return [bin]
+  return ['.exe', '.cmd', '.bat', '.com'].map((ext) => bin + ext)
 }
 
 function getPathDirs(): string[] {
@@ -74,21 +82,29 @@ export function extraDirs(): string[] {
   ]
 }
 
-async function isExecutable(p: string): Promise<boolean> {
+async function isExecutable(p: string, windows: boolean): Promise<boolean> {
   try {
-    await access(p, isWindows ? constants.F_OK : constants.X_OK)
+    await access(p, windows ? constants.F_OK : constants.X_OK)
     return true
   } catch {
     return false
   }
 }
 
-/** Resolve a single bin name to an absolute path, or null if not found. */
-async function which(bin: string, dirs: string[], exts: string[]): Promise<string | null> {
+/**
+ * Resolve a single binary name. Exported for a platform-independent
+ * regression test of Windows npm's extensionless + .cmd shim layout.
+ */
+export async function resolveAgentBinary(
+  bin: string,
+  dirs: string[],
+  windows = isWindows
+): Promise<string | null> {
+  const names = windows ? windowsAgentCandidates(bin) : [bin]
   for (const dir of dirs) {
-    for (const ext of exts) {
-      const candidate = join(dir, bin + ext)
-      if (await isExecutable(candidate)) return candidate
+    for (const name of names) {
+      const candidate = join(dir, name)
+      if (await isExecutable(candidate, windows)) return candidate
     }
   }
   return null
@@ -101,8 +117,6 @@ async function which(bin: string, dirs: string[], exts: string[]): Promise<strin
  */
 export async function detectAgents(probes: AgentProbe[]): Promise<AgentProbeResult[]> {
   const dirs = getPathDirs()
-  const exts = isWindows ? getWindowsExts() : ['']
-
   // Also try `npm prefix -g` once and prepend its bin/ — picks up custom
   // npm prefixes (nvm, volta) that aren't on PATH inside Electron.
   try {
@@ -121,7 +135,7 @@ export async function detectAgents(probes: AgentProbe[]): Promise<AgentProbeResu
     probes.map(async (probe) => {
       const candidates = [probe.command, ...(probe.fallbackBins ?? [])]
       for (const bin of candidates) {
-        const resolved = await which(bin, dirs, exts)
+        const resolved = await resolveAgentBinary(bin, dirs)
         if (resolved) {
           return { command: probe.command, resolvedPath: resolved, matchedBin: bin }
         }
