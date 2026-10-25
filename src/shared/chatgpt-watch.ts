@@ -5,7 +5,7 @@ export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human'
 export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
 /** All stored durations are integer SECONDS; UI may express seconds, minutes or hours. */
-export type ChatWatchTimeUnit = 'seconds' | 'minutes' | 'hours'
+export type ChatWatchTimeUnit = 'seconds' | 'minutes' | 'hours' | 'days'
 export type ChatWatchTimeKind = 'rotation' | 'check' | 'resume'
 export const CHAT_WATCH_INTERVAL_LIMITS: Record<ChatWatchTimeKind, { min: number; max: number }> = {
   rotation: { min: 5, max: 86_400 },
@@ -21,14 +21,17 @@ export function assertChatWatchSeconds(value: unknown, kind: ChatWatchTimeKind):
   return value
 }
 export function intervalInputFromSeconds(seconds: number): { amount: number; unit: ChatWatchTimeUnit } {
+  if (seconds % 86400 === 0) return { amount: seconds / 86400, unit: 'days' }
   if (seconds % 3600 === 0) return { amount: seconds / 3600, unit: 'hours' }
   if (seconds % 60 === 0) return { amount: seconds / 60, unit: 'minutes' }
   return { amount: seconds, unit: 'seconds' }
 }
 export function secondsFromIntervalInput(amount: number, unit: ChatWatchTimeUnit): number {
-  const multiplier = { seconds: 1, minutes: 60, hours: 3600 }[unit]
+  const multiplier = { seconds: 1, minutes: 60, hours: 3600, days: 86400 }[unit]
   if (!Number.isFinite(amount) || amount <= 0) return NaN
-  return Math.round(amount * multiplier)
+  const seconds = amount * multiplier
+  // Reject fractional seconds rather than silently rounding executable timers.
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : NaN
 }
 
 export interface ChatWatchRotation {
@@ -87,6 +90,8 @@ export interface ChatWatchPageStatus {
   online: boolean
   composerReady: boolean
   hasDraft: boolean
+  /** The most recent DOM message role, not inferred from message counts. */
+  lastMessageRole?: 'user' | 'assistant' | 'unknown'
 }
 
 export interface ChatWatchSnapshot {
@@ -102,6 +107,8 @@ export interface ChatWatchSnapshot {
   sentCount: number
   attemptCount: number
   awaitingResponse: boolean
+  /** Ephemeral decision reasoning shown to the operator, never stored with chat text. */
+  lastDecision?: { at: number; type: 'wait' | 'send' | 'needs-human'; reason: string }
   reason: string | null
   page: ChatWatchPageStatus | null
   logs: ChatWatchLog[]

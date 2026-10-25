@@ -7,6 +7,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
   const [drafts, setDrafts] = useState<Record<number,string>>({})
+  const [limitDrafts, setLimitDrafts] = useState<Record<number,string>>({})
   const [intervalEdits, setIntervalEdits] = useState<Record<string, { amount: number; unit: ChatWatchTimeUnit }>>({})
   useEffect(() => {
     let mounted = true
@@ -31,12 +32,12 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     const draft = intervalEdits[key] ?? intervalInputFromSeconds(seconds)
     return <div className="nightnova-wb-line" key={key}>
       <label>{label}
-        <input type="number" min={1} step={1} disabled={disabled || working} value={draft.amount}
+        <input type="number" min={0.0001} step="any" disabled={disabled || working} value={draft.amount}
           onChange={e => setIntervalEdits(prev => ({ ...prev, [key]: { ...draft, amount: Number(e.target.value) } }))}/>
       </label>
       <select aria-label={label + ' 단위'} disabled={disabled || working} value={draft.unit}
         onChange={e => setIntervalEdits(prev => ({ ...prev, [key]: { ...draft, unit: e.target.value as ChatWatchTimeUnit } }))}>
-        <option value="seconds">초</option><option value="minutes">분</option><option value="hours">시간</option>
+        <option value="seconds">초</option><option value="minutes">분</option><option value="hours">시간</option><option value="days">일</option>
       </select>
       <button type="button" disabled={disabled || working} onClick={() => {
         const value = secondsFromIntervalInput(draft.amount, draft.unit)
@@ -70,6 +71,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     </div>
     {timeField('화면 자동 순환 간격', 'rotation', state.rotation.intervalSeconds, 'rotation',
       value => void run(() => window.rev.chatWatch.rotation({intervalSeconds:value})))}
+    <p className="nightnova-wb-note">초·분·시간·일을 직접 입력하세요. 상태 점검 간격이 길면 재개 판단도 늦어집니다. 자동 명령은 화면에 표시되는 탭에서만 전송합니다.</p>
     <h4>프로젝트별 감독</h4>
     {targets.length === 0 && <p className="nightnova-wb-note">ChatGPT에서 기존 프로젝트 대화 탭을 먼저 열어주세요.</p>}
     {targets.map(t => {
@@ -79,6 +81,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''}</strong>
         <p>{snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}회</p>
         {snap?.reason && <p>{snap.reason}</p>}
+        {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
+        {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
         <div className="nightnova-wb-line">
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id))}>시작</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
@@ -99,14 +103,24 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         value => configure({checkIntervalSeconds:value}), active)}
       <div className="nightnova-wb-line">
         <label>자동 재개 최대 횟수
-          <input type="number" min={1} max={24} disabled={active || working} value={config.maxAutoMessages}
-            onChange={e => configure({maxAutoMessages:Number(e.target.value)})}/>
+          <input type="number" min={1} max={24} step={1} disabled={active || working}
+            value={limitDrafts[webContentsId!] ?? String(config.maxAutoMessages)}
+            onChange={e => setLimitDrafts(prev => ({ ...prev, [webContentsId!]: e.target.value }))}/>
         </label>
+        <button type="button" disabled={active || working} onClick={() => {
+          const count = Number(limitDrafts[webContentsId!] ?? String(config.maxAutoMessages))
+          if (!Number.isSafeInteger(count) || count < 1 || count > 24) {
+            setError('자동 재개 최대 횟수는 1~24의 정수여야 합니다.')
+            return
+          }
+          setLimitDrafts(prev => { const next = { ...prev }; delete next[webContentsId!]; return next })
+          configure({maxAutoMessages: count})
+        }}>적용</button>
       </div>
       {boxes.map(([key,label]) => <label className="nightnova-wb-check" key={key}>
-        <input type="checkbox" disabled={active || working} checked={config.stopOn[key]}
+        <input type="checkbox" disabled={active || working || key === "payment"} checked={key === "payment" ? true : config.stopOn[key]}
           onChange={e => configure({stopOn:{...config.stopOn,[key]:e.target.checked}})}/>
-        {label}
+        {label}{key === "payment" ? " · 안전상 항상 적용" : ""}
       </label>)}
       <label>재개 프롬프트
         <textarea rows={5} disabled={active || working}

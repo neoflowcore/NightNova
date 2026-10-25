@@ -24,19 +24,19 @@ for (const file of required) {
   }
 }
 if (missing.length) {
-  console.error('[Nightnova] Missing packaging prerequisites:\n' + missing.join('\n'))
+  console.error('[NightNova] Missing packaging prerequisites:\n' + missing.join('\n'))
   console.error('Run npm run build on the target machine before generating the release manifest.')
   process.exitCode = 1
 } else {
   await mkdir(release, { recursive: true })
   const files = (await readdir(release)).filter((name) =>
-    /^Nightnova-[\w.+-]+-setup\.exe$/i.test(name))
+    /^NightNova-[\w.+-]+-setup\.exe$/i.test(name))
   if (!files.length) {
-    console.error('[Nightnova] Windows NSIS executable is missing in release/.')
+    console.error('[NightNova] Windows NSIS executable is missing in release/.')
     process.exitCode = 1
   } else {
     const manifest = {
-      product: 'Nightnova',
+      product: 'NightNova',
       generatedAt: new Date().toISOString(),
       platform: process.platform,
       architecture: process.arch,
@@ -51,7 +51,7 @@ if (missing.length) {
     }
     const output = path.join(release, 'NIGHTNOVA_RELEASE_MANIFEST.json')
     await writeFile(output, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
-    console.log('[Nightnova] Manifest written to ' + output)
+    console.log('[NightNova] Manifest written to ' + output)
     for (const item of manifest.files) {
       console.log(item.name + ' - ' + item.size + ' bytes - ' + item.sha256)
     }

@@ -96,7 +96,7 @@ app.userAgentFallback = app.userAgentFallback
 // Nightnova owns its own profile. Never reuse or silently migrate the
 // upstream Rever Browser cookie jar; it may contain unrelated logins.
 // Legacy REVER_USER_DATA_DIR is accepted ONLY as an explicit dev/E2E override.
-app.setName('Nightnova')
+app.setName('NightNova')
 app.setPath(
   'userData',
   process.env.NIGHTNOVA_USER_DATA_DIR ||
@@ -104,7 +104,7 @@ app.setPath(
     path.join(app.getPath('appData'), 'nightnova')
 )
 app.setAboutPanelOptions({
-  applicationName: 'Nightnova',
+  applicationName: 'NightNova',
   applicationVersion: app.getVersion()
 })
 

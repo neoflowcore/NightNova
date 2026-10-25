@@ -1,8 +1,8 @@
-# Nightnova
+# NightNova
 
-**Nightnova** is a local, personal Chromium/Electron AI development browser for Windows-first workflows.
+**NightNova** is a local, personal Chromium/Electron AI development browser for Windows-first workflows.
 
-> Status: B2 development integration under Windows acceptance review. A runnable Windows installer and end-to-end Codex ACP session have **not** been verified. Do not treat the code integration as a release.
+> Status: thinking-macro v2.1 safety source batch. Windows installer, live ChatGPT supervision and Codex ACP have **not** been verified. Source integration is not a release.
 
 ## Included
 
@@ -32,7 +32,7 @@ See [B2 Windows acceptance checklist](docs/NIGHTNOVA_B2_WINDOWS_ACCEPTANCE.md). 
 4. Choose a **Git repository root**, set a future deadline at least 5 minutes away, add a bounded task, explicitly enable workspace editing if needed, then press Start.
 5. Inspect the local working tree and validation before using `npm run package:win` on a Windows x64 system.
 
-Your local Codex subscription may have rate/usage limits. Nightnova does not bypass those limits.
+Your local Codex subscription may have rate/usage limits. NightNova does not bypass those limits.
 
 ## Important
 
@@ -47,3 +47,7 @@ An ACP agent may have tools that do not request permission; therefore the approv
 ## GitHub Actions
 
 No CI workflows were enabled during B1. Run a single consolidated local verification after the functional batch. The full Windows packaging acceptance gate remains outstanding.
+
+## Thinking macro v2.1 source batch
+
+Visible ChatGPT supervision now records per-tab decision reasons, supports user-entered seconds/minutes/hours/days, protects unanswered user messages, separates long reasoning from idle detection, invalidates stale inspections on pause/stop, and always escalates payment-related requests. Actual Windows and authenticated ChatGPT browser acceptance are still required. See [v2.1 batch record](docs/NIGHTNOVA_V2_1_RUNTIME_BATCH.md).

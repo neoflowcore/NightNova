@@ -57,7 +57,8 @@ export function requestedChatWatchPause(
   text: string,
   stopOn: ChatWatchStopConditions
 ): ChatWatchActionCategory | null {
-  return detectChatWatchActionRequests(text).find((category) => stopOn[category]) ?? null
+  // Payment always requires a human, including upgraded legacy preferences.
+  return detectChatWatchActionRequests(text).find((category) => category === 'payment' || stopOn[category]) ?? null
 }
 
 export type WatchDecision =
@@ -82,6 +83,7 @@ export function decideChatWatch(
 ): WatchDecision {
   const age = Math.max(0, ctx.now - ctx.lastProgressAt)
   const threshold = ctx.intervalSeconds * 1000
+  const generationStallThreshold = Math.max(30 * 60 * 1000, threshold * 3)
   if (!isChatGptConversation(page.url)) return { type: 'needs-human', reason: 'ChatGPT 대화 주소가 아닙니다.' }
   if (page.needsLogin || page.challenge) {
     return { type: 'needs-human', reason: 'ChatGPT 로그인 또는 사용자 인증이 필요합니다.' }
@@ -95,15 +97,21 @@ export function decideChatWatch(
         manualVerification: '수기 검증 요청',
         payment: '결제 요청'
       }
-      return { type: 'needs-human', reason: '선택한 중단 조건에 도달했습니다: ' + labels[category] }
+      return { type: 'needs-human', reason: '안전 중단 조건에 도달했습니다: ' + labels[category] }
     }
   }
   if (!page.online) return { type: 'wait', reason: '오프라인 상태로 네트워크 연결 복구를 대기합니다.' }
   if (!page.assistantCount) return { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
   if (page.generating) {
+    // Extended reasoning is not a completed idle response; never submit while generating.
+    return age >= generationStallThreshold
+      ? { type: 'needs-human', reason: '응답 생성 중 30분 이상(또는 재개 간격의 3배) 변화가 없어 점검이 필요합니다.' }
+      : { type: 'wait', reason: 'ChatGPT가 응답 생성 중입니다. 완료될 때까지 재개 프롬프트를 보내지 않습니다.' }
+  }
+  if (page.lastMessageRole === 'user') {
     return age >= threshold
-      ? { type: 'needs-human', reason: 'ChatGPT가 응답 생성 중 장시간 멈춘 것으로 보입니다. 중복 프롬프트를 전송하지 않습니다.' }
-      : { type: 'wait', reason: 'ChatGPT가 응답을 생성하는 중입니다.' }
+      ? { type: 'needs-human', reason: '최근 사용자 메시지의 답변을 확인하지 못했습니다. 중복 전송 방지를 위해 중단합니다.' }
+      : { type: 'wait', reason: '마지막 메시지가 사용자 요청입니다. 답변을 기다립니다.' }
   }
   if (ctx.awaitingResponse) {
     return age >= threshold

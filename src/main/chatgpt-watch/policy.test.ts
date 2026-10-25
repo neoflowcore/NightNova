@@ -30,6 +30,18 @@ describe('ChatGPT supervisor configurable stop categories', () => {
   it('never mistakes a real authentication page for successful login', () => {
     expect(decideChatWatch({ ...base, needsLogin: true }, context).type).toBe('needs-human')
   })
+  it('does not resume while the latest message is unanswered user input', () => {
+    const pending = { ...base, lastMessageRole: 'user' as const }
+    expect(decideChatWatch(pending, { ...context, now: 10000, intervalSeconds: 15 }).type).toBe('wait')
+    expect(decideChatWatch(pending, { ...context, now: 16000, intervalSeconds: 15 }).type).toBe('needs-human')
+  })
+  it('keeps long reasoning separate from idle completion', () => {
+    expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 900000 }).type).toBe('wait')
+    expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 2000000 }).type).toBe('needs-human')
+  })
+  it('always gates explicit payment requests', () => {
+    expect(decideChatWatch({ ...base, lastAssistantText: '결제 승인이 필요합니다.' }, { ...context, stopOn: { ...defaultStops, payment: false } }).type).toBe('needs-human')
+  })
   it('does not send another prompt while generation is ongoing', () => {
     expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 20_000 }).type)
       .toBe('wait')

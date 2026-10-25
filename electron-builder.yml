@@ -1,5 +1,5 @@
 appId: app.nightnova.browser
-productName: Nightnova
+productName: NightNova
 directories:
   output: release
   buildResources: build

@@ -7,6 +7,8 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   const assistantNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'assistant')
   const userNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'user')
   const last = assistantNodes[assistantNodes.length - 1]
+  const lastNode = nodes[nodes.length - 1]
+  const lastRole = lastNode?.getAttribute('data-message-author-role')
   const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
   const draftText = editor ? (editor.value ?? editor.innerText ?? editor.textContent ?? '') : ''
   const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
@@ -19,6 +21,7 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     url: location.href,
     assistantCount: assistantNodes.length,
     userCount: userNodes.length,
+    lastMessageRole: lastRole === 'user' || lastRole === 'assistant' ? lastRole : 'unknown',
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
     generating,
     online: navigator.onLine,
@@ -41,6 +44,10 @@ export function chatWatchSubmitScript(prompt: string): string {
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     if (!editor || (stop && !stop.disabled)) return { clicked: false, reason: 'busy-or-missing-editor' }
+    const messages = document.querySelectorAll('[data-message-author-role]')
+    if (messages.length && messages[messages.length - 1].getAttribute('data-message-author-role') === 'user') {
+      return { clicked: false, reason: 'unanswered-user-message' }
+    }
     const current = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (current) return { clicked: false, reason: 'existing-user-draft' }
     editor.focus()

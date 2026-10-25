@@ -1,9 +1,9 @@
 {
   "name": "nightnova",
-  "productName": "Nightnova",
+  "productName": "NightNova",
   "version": "0.1.8",
   "private": true,
-  "description": "Nightnova private local AI development browser",
+  "description": "NightNova private local AI development browser",
   "license": "MIT",
   "main": "./out/main/index.js",
   "type": "module",

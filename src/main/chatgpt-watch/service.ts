@@ -33,6 +33,8 @@ export class ChatGptConversationWatch {
   private assistantKey = ''
   private userCount = 0
   private stableChecks = 0
+  /** Invalidate in-flight async checks after a Pause, Stop or Restart. */
+  private epoch = 0
 
   constructor(
     private readonly mainWindow: () => BrowserWindow | null,
@@ -99,8 +101,8 @@ export class ChatGptConversationWatch {
           ? patch.stopOn.approval : current.stopOn.approval,
         manualVerification: typeof patch.stopOn?.manualVerification === 'boolean'
           ? patch.stopOn.manualVerification : current.stopOn.manualVerification,
-        payment: typeof patch.stopOn?.payment === 'boolean'
-          ? patch.stopOn.payment : current.stopOn.payment
+        // Payment approval must not be delegated to an auto-resume prompt.
+        payment: true
       }
     }
   }
@@ -165,9 +167,9 @@ export class ChatGptConversationWatch {
   }
 
   private updatePage(observation: ChatWatchDomObservation): void {
-    const { assistantCount, userCount, generating, online, composerReady, hasDraft } = observation
+    const { assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole } = observation
     this.stateData.page = {
-      assistantCount, userCount, generating, online, composerReady, hasDraft
+      assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole
     }
     this.stateData.lastCheckAt = Date.now()
     this.notify()
@@ -195,7 +197,10 @@ export class ChatGptConversationWatch {
     this.stateData.lastCheckAt = Date.now()
     this.stateData.sentCount = 0
     this.stateData.attemptCount = 0
-    this.stateData.awaitingResponse = false
+    this.stateData.awaitingResponse = page.lastMessageRole === 'user'
+    this.stateData.lastDecision = {
+      at: Date.now(), type: 'wait', reason: '감독을 시작했습니다. 첫 상태 점검을 기다립니다.'
+    }
     this.assistantKey = fingerprint(page)
     this.userCount = page.userCount
     this.stableChecks = 0
@@ -210,14 +215,21 @@ export class ChatGptConversationWatch {
   }
 
   private stopTimer(): void {
+    this.epoch++
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+  }
+
+  private isArmed(epoch: number, id: number): boolean {
+    return this.epoch === epoch && this.stateData.status === 'watching' &&
+      this.maySendFromTab(id)
   }
 
   private async humanGate(reason: string): Promise<void> {
     this.stopTimer()
     this.stateData.status = 'needs-human'
     this.stateData.reason = reason
+    this.stateData.lastDecision = { at: Date.now(), type: 'needs-human', reason }
     this.addLog('warning', reason)
     const win = this.mainWindow()
     if (win && !win.isDestroyed()) win.flashFrame(true)
@@ -234,6 +246,7 @@ export class ChatGptConversationWatch {
     this.stopTimer()
     this.stateData.status = 'paused'
     this.stateData.reason = '사용자가 ChatGPT 대화 감독을 일시정지했습니다.'
+    this.stateData.lastDecision = { at: Date.now(), type: 'wait', reason: '사용자가 일시정지했습니다.' }
     this.addLog('info', '감독을 일시정지했습니다. 자동 메시지를 보내지 않습니다.')
     await this.persist()
     return this.state()
@@ -246,6 +259,7 @@ export class ChatGptConversationWatch {
     this.stateData.targetUrl = null
     this.stateData.webContentsId = null
     this.stateData.awaitingResponse = false
+    this.stateData.lastDecision = undefined
     this.addLog('info', 'ChatGPT 감독을 종료했습니다.')
     await this.persist()
     return this.state()
@@ -264,9 +278,11 @@ export class ChatGptConversationWatch {
   async check(): Promise<void> {
     if (this.busy || this.stateData.status !== 'watching') return
     this.busy = true
+    const epoch = this.epoch
     try {
       const wc = this.activeGuest()
       const page = await this.inspectGuest(wc)
+      if (this.epoch !== epoch || this.stateData.status !== 'watching') return
       this.updatePage(page)
       const key = fingerprint(page)
       const assistantChanged = key !== this.assistantKey
@@ -276,7 +292,12 @@ export class ChatGptConversationWatch {
         this.userCount = page.userCount
         this.stateData.lastProgressAt = Date.now()
         this.stableChecks = 0
-        if (assistantChanged) this.stateData.awaitingResponse = false
+        // An unanswered manual message must never become a second prompt.
+        if (page.lastMessageRole === 'user' || (userChanged && !assistantChanged)) {
+          this.stateData.awaitingResponse = true
+        } else if (assistantChanged) {
+          this.stateData.awaitingResponse = false
+        }
       } else this.stableChecks++
 
       const decision = decideChatWatch(page, {
@@ -289,59 +310,80 @@ export class ChatGptConversationWatch {
         stableObservations: this.stableChecks,
         stopOn: this.stateData.config.stopOn
       })
+      this.stateData.lastDecision = { at: Date.now(), type: decision.type, reason: decision.reason }
+      if (decision.type === 'send' && !this.maySendFromTab(wc.id)) {
+        this.stateData.lastDecision = {
+          at: Date.now(), type: 'wait',
+          reason: '자동 재개 조건 충족. 사용자가 보는 탭에 표시되면 재확인 후 전송합니다.'
+        }
+      }
+      this.notify()
       if (decision.type === 'needs-human') {
         await this.humanGate(decision.reason)
         return
       }
-      // Inspection is background-safe. Real prompt submission is intentionally
-      // tied to the visible tab, so the operator can WATCH the macro work.
-      // The UI rotates visible ChatGPT projects at the user-configured interval.
-      if (decision.type === 'send' && this.maySendFromTab(wc.id)) {
-        await this.sendOnce(wc, page)
+      // Hidden tabs are read-only; Pause/Stop invalidates any stale check.
+      if (decision.type === 'send' && this.isArmed(epoch, wc.id)) {
+        await this.sendOnce(wc, page, epoch)
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      await this.humanGate('대화 상태 판독 실패: ' + reason.slice(0, 180))
+      if (this.epoch === epoch && this.stateData.status === 'watching') {
+        const reason = error instanceof Error ? error.message : String(error)
+        await this.humanGate('대화 상태 판독 실패: ' + reason.slice(0, 180))
+      }
     } finally {
       this.busy = false
     }
   }
 
-  private async sendOnce(wc: WebContents, expected: ChatWatchDomObservation): Promise<void> {
-    // Two-stage safety gate: inspect again immediately before doing anything
-    // irreversible. An assistant reply or a user draft invalidates the send.
-    if (!this.maySendFromTab(wc.id)) return
+  private async sendOnce(
+    wc: WebContents, expected: ChatWatchDomObservation, epoch: number
+  ): Promise<void> {
+    // Re-inspect the displayed tab, role, fingerprint, draft and generation
+    // immediately before any irreversible action.
+    if (!this.isArmed(epoch, wc.id)) return
     const fresh = await this.inspectGuest(this.activeGuest())
-    if (!this.maySendFromTab(wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
-        fresh.userCount !== expected.userCount || fresh.generating ||
-        fresh.hasDraft || fresh.needsLogin || fresh.challenge || !fresh.online ||
-        !fresh.composerReady) return
+    if (!this.isArmed(epoch, wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
+        fresh.userCount !== expected.userCount || fresh.lastMessageRole === 'user' ||
+        fresh.generating || fresh.hasDraft || fresh.needsLogin || fresh.challenge ||
+        !fresh.online || !fresh.composerReady) return
 
-    // Persist intent first. If the application crashes after clicking Send,
-    // restart is always paused rather than silently transmitting it again.
     this.stateData.attemptCount++
     this.addLog('action', '재개 프롬프트 전송 시도 #' + this.stateData.attemptCount)
+    // A restart stays paused and only the operator's settings are stored.
     await this.persist()
+    if (!this.isArmed(epoch, wc.id)) return
 
     const raw: unknown = await wc.executeJavaScript(
       chatWatchSubmitScript(this.stateData.config.resumePrompt), true
     )
     const outcome = raw as { clicked?: boolean; reason?: string } | null
     if (!outcome?.clicked) {
-      await this.humanGate('전송을 확인하지 못했습니다(' +
-        String(outcome?.reason ?? 'unknown') + '). 자동 재시도하지 않습니다.')
+      if (this.epoch === epoch && this.stateData.status === 'watching') {
+        await this.humanGate('전송을 확인하지 못했습니다(' +
+          String(outcome?.reason ?? 'unknown') + '). 자동 재시도하지 않습니다.')
+      }
       return
     }
+    // The browser may already have clicked while Pause was being pressed:
+    // record the outcome, never issue a second click.
     await new Promise((resolve) => setTimeout(resolve, 1200))
     const confirmation = await this.inspectGuest(this.activeGuest())
     if (confirmation.userCount <= expected.userCount) {
-      await this.humanGate('ChatGPT에 전송 버튼은 눌렀지만 메시지 도착을 확인하지 못했습니다. 중복 전송을 방지하려고 멈춥니다.')
+      if (this.epoch === epoch && this.stateData.status === 'watching') {
+        await this.humanGate('전송 버튼은 눌렀지만 새 메시지를 확인하지 못했습니다. 중복 전송 방지로 멈춥니다.')
+      } else {
+        this.addLog('warning', '일시정지 중 이전 전송의 도착 확인에 실패했습니다. 재개 전 직접 확인하세요.')
+      }
       return
     }
     this.stateData.sentCount++
     this.stateData.lastSentAt = Date.now()
     this.stateData.lastProgressAt = Date.now()
     this.stateData.awaitingResponse = true
+    this.stateData.lastDecision = {
+      at: Date.now(), type: 'wait', reason: '자동 재개 메시지를 전송했습니다. 다음 답변을 기다립니다.'
+    }
     this.userCount = confirmation.userCount
     this.stableChecks = 0
     this.updatePage(confirmation)
