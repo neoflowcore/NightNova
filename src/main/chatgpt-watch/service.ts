@@ -115,6 +115,7 @@ export class ChatGptConversationWatch {
       ),
       maxAutoMessages: patch.maxAutoMessages === undefined ? current.maxAutoMessages :
         assertMaxAutoMessages(patch.maxAutoMessages),
+      readOnly: typeof patch.readOnly === 'boolean' ? patch.readOnly : current.readOnly,
       resumePrompt: prompt,
       stopOn: {
         login: typeof patch.stopOn?.login === 'boolean'
@@ -242,7 +243,8 @@ export class ChatGptConversationWatch {
     if (this.epoch !== armedEpoch || this.stateData.status !== 'watching') return this.state()
     this.timer = setInterval(() => { void this.check() }, this.stateData.config.checkIntervalSeconds * 1000)
     this.timer.unref?.()
-    this.addLog('info', 'ChatGPT 대화 감독 시작. 자동 재개 간격: ' +
+    this.addLog('info', (this.stateData.config.readOnly ? '[모의실행] 실제 메시지 전송 금지. ' : '[자동 전송 활성화] ') +
+      'ChatGPT 대화 감독 시작. 자동 재개 간격: ' +
       this.stateData.config.intervalSeconds + '초. 상태 점검 간격: ' +
       this.stateData.config.checkIntervalSeconds + '초. 결제는 항상 중단하고 로그인·인증은 사용자가 처리합니다.')
     return this.state()
@@ -352,7 +354,12 @@ export class ChatGptConversationWatch {
         stopOn: this.stateData.config.stopOn
       })
       this.stateData.lastDecision = { at: Date.now(), type: decision.type, reason: decision.reason }
-      if (decision.type === 'send' && !this.maySendFromTab(wc.id)) {
+      if (decision.type === 'send' && this.stateData.config.readOnly) {
+        this.stateData.lastDecision = {
+          at: Date.now(), type: 'wait',
+          reason: '모의실행: 전송 조건은 충족했지만 메시지는 보내지 않습니다. 실제 전송은 모의실행 설정을 해제한 후에만 가능합니다.'
+        }
+      } else if (decision.type === 'send' && !this.maySendFromTab(wc.id)) {
         this.stateData.lastDecision = {
           at: Date.now(), type: 'wait',
           reason: '자동 재개 조건 충족. 사용자가 보는 탭에 표시되면 재확인 후 전송합니다.'
@@ -373,7 +380,7 @@ export class ChatGptConversationWatch {
         return
       }
       // Hidden tabs are read-only; Pause/Stop invalidates any stale check.
-      if (decision.type === 'send' && this.isArmed(epoch, wc.id)) {
+      if (decision.type === 'send' && !this.stateData.config.readOnly && this.isArmed(epoch, wc.id)) {
         await this.sendOnce(wc, page, epoch)
       }
     } catch (error) {

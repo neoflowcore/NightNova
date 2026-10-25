@@ -138,6 +138,8 @@ export interface ChatWatchConfig {
   checkIntervalSeconds: number
   /** Maximum messages sent in one explicitly armed supervision session. */
   maxAutoMessages: number
+  /** Operator can test all readiness decisions without clicking Send. */
+  readOnly: boolean
   /** User-editable text; never inferred from website-provided instructions. */
   resumePrompt: string
   stopOn: ChatWatchStopConditions
@@ -207,6 +209,7 @@ export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
   intervalSeconds: 600,
   checkIntervalSeconds: 30,
   maxAutoMessages: 12,
+  readOnly: false,
   resumePrompt: DEFAULT_CHAT_WATCH_PROMPT,
   stopOn: {
     login: false,
@@ -214,6 +217,13 @@ export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
     manualVerification: false,
     payment: true
   }
+}
+
+/** Read-only mode always wins over a due timer and active browser tab. */
+export function mayCommitChatWatchPrompt(
+  readOnly: boolean, enabledTab: boolean, action: 'send' | 'wait' | 'needs-human' | 'complete'
+): boolean {
+  return !readOnly && enabledTab && action === 'send'
 }
 
 export function createChatWatchSnapshot(): ChatWatchSnapshot {

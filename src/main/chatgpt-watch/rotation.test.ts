@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS, mayCommitChatWatchPrompt } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -49,6 +49,13 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(canSendAfterOperatorActivity(100_000, 100_000 - OPERATOR_SEND_GRACE_MS)).toBe(true)
     expect(canSendAfterOperatorActivity(99_000, 100_000)).toBe(false)
     expect(canSendAfterOperatorActivity(Number.NaN, 1)).toBe(false)
+  })
+  it('never commits Send in read-only supervision mode', () => {
+    expect(mayCommitChatWatchPrompt(true,true,'send')).toBe(false)
+    expect(mayCommitChatWatchPrompt(true,false,'send')).toBe(false)
+    expect(mayCommitChatWatchPrompt(false,false,'send')).toBe(false)
+    expect(mayCommitChatWatchPrompt(false,true,'wait')).toBe(false)
+    expect(mayCommitChatWatchPrompt(false,true,'send')).toBe(true)
   })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')

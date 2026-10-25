@@ -99,7 +99,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       const snap = state.sessions.find(s => s.webContentsId === id)?.snapshot
       return <div className="nightnova-task" key={t.id}>
         <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''} {id === settingsId ? '· 설정 대상' : ''}</strong>
-        <p>{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
+        <p>{snap?.config.readOnly ? '[모의실행 · 전송 없음] ' : ''}{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
@@ -137,6 +137,14 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     </label>
     <p className="nightnova-wb-note">감독할 탭을 여기서 선택하면 브라우저 화면을 전환하지 않고도 설정을 편집할 수 있습니다.</p>
     {!config ? <p className="nightnova-wb-note">이 탭에서 설정 준비를 누르면 감독 시작 전에 시간과 재개 프롬프트를 편집할 수 있습니다.</p> : <>
+      <label className="nightnova-wb-check">
+        <input type="checkbox" disabled={active || working} checked={config.readOnly}
+          onChange={e => configure({readOnly:e.target.checked})}/>
+        모의실행 (타이머·판단만 동작, 실제 메시지 전송 없음)
+      </label>
+      <p className="nightnova-wb-note">{config.readOnly
+        ? '안전한 사전점검 중입니다. 자동 전송은 절대 실행하지 않습니다.'
+        : '실제 메시지 전송 모드입니다. 설정 시간 도달 시 보이는 ChatGPT 탭에 자동 전송할 수 있습니다.'}</p>
       {timeField('자동 재개 판단 간격', 'resume-' + settingsId, config.intervalSeconds, 'resume',
         value => configure({intervalSeconds:value}), active)}
       {timeField('상태 점검 간격', 'check-' + settingsId, config.checkIntervalSeconds, 'check',
