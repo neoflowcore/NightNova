@@ -1,5 +1,5 @@
 name: Nightnova Windows One-Shot
-# Release gate revision 6: thinking macro, multi-conversation watch, rotating UI and 0.1.8 installer.
+# Release gate revision 7: consolidated v2.1 safety, observability, and user-configured timing.
 on:
   push:
     branches:
