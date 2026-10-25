@@ -242,12 +242,17 @@ export class ChatGptWatchHub {
 
   async pauseAll(): Promise<ChatWatchDashboard> {
     this.batchEpoch++
-    // Start every pause synchronously before waiting for any disk writes.
-    // This also invalidates starts that are still inspecting the page.
-    // Preserve an already completed/paused session. Only running sessions stop.
-    const pending = [...this.slots.values()]
-      .filter(({ watch }) => watch.state().status === 'watching')
-      .map(({ watch }) => watch.pause())
+    // Invalidate every pending Start, including sessions that have not yet
+    // transitioned to watching while awaiting the first DOM inspection.
+    // Preserve the labels on completed, paused and human-review sessions.
+    const pending: Promise<unknown>[] = []
+    for (const { watch } of this.slots.values()) {
+      if (watch.state().status === 'watching') {
+        pending.push(watch.pause())
+      } else {
+        watch.cancelPendingStart()
+      }
+    }
     this.notify()
     await Promise.all(pending)
     return this.state()

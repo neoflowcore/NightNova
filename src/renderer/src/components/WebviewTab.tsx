@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 import { useHistoryStore } from '@/stores/history'
-import { isOpenAiAuthenticationFlowUrl } from '../../../shared/auth-support'
+import { shouldAvoidAutomaticCdp } from '../../../shared/auth-support'
 import type { Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
 import { useAppThemeStore } from '@/stores/app-theme'
@@ -109,7 +109,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
         return
       }
       if (!id || id <= 0) return
-      if (isOpenAiAuthenticationFlowUrl(wv.getURL())) {
+      if (shouldAvoidAutomaticCdp(wv.getURL())) {
         // DOM readiness and webContents discovery do not require CDP.
         updateTab(tab.id, { webContentsId: id })
         return
@@ -119,7 +119,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
       try {
         const ok = await window.rev.cdp.attach(id)
         if (!ok) return
-        if (cancelled || epoch !== navigationEpoch || isOpenAiAuthenticationFlowUrl(wv.getURL())) {
+        if (cancelled || epoch !== navigationEpoch || shouldAvoidAutomaticCdp(wv.getURL())) {
           await window.rev.cdp.detach(id)
           return
         }
@@ -149,12 +149,12 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     const onNavigate = (e: Electron.DidNavigateEvent) => {
       navigationEpoch++
       // Auth pages should not remain debugger-attached after navigation.
-      if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
+      if (attachedId != null && shouldAvoidAutomaticCdp(e.url)) {
         const id = attachedId
         attachedId = null
         attached = false
         void window.rev.cdp.detach(id)
-      } else if (!isOpenAiAuthenticationFlowUrl(e.url)) {
+      } else if (!shouldAvoidAutomaticCdp(e.url)) {
         void tryAttach()
       }
       updateTab(tab.id, { url: e.url })
@@ -164,7 +164,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     const onNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       if (!e.isMainFrame) return
       navigationEpoch++
-      if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
+      if (attachedId != null && shouldAvoidAutomaticCdp(e.url)) {
         const id = attachedId
         attachedId = null
         attached = false

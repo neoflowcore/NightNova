@@ -266,6 +266,11 @@ export class ChatGptConversationWatch {
     this.timer = null
   }
 
+  /** Cancel a pending asynchronous Start without changing completed/paused state. */
+  cancelPendingStart(): void {
+    this.stopTimer()
+  }
+
   private isArmed(epoch: number, id: number): boolean {
     return this.epoch === epoch && this.stateData.status === 'watching' &&
       this.maySendFromTab(id)

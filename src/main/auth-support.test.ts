@@ -6,6 +6,7 @@ import {
   summarizeOpenAiNetworkError,
   isOpenAiAuthenticationFlowUrl,
   isKnownIdentityProviderUrl,
+  shouldAvoidAutomaticCdp,
   appendAuthDiagnostic,
   OPENAI_LOGIN_ENTRY_URL
 } from '../shared/auth-support'
@@ -25,6 +26,14 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
     expect(isKnownIdentityProviderUrl('https://accounts.google.com.evil.test/login')).toBe(false)
     expect(isKnownIdentityProviderUrl('http://accounts.google.com/login')).toBe(false)
     expect(isKnownIdentityProviderUrl('https://google.com/login')).toBe(false)
+  })
+  it('does not auto-attach a debugger to ChatGPT or identity providers', () => {
+    expect(shouldAvoidAutomaticCdp('https://chatgpt.com/')).toBe(true)
+    expect(shouldAvoidAutomaticCdp('https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc')).toBe(true)
+    expect(shouldAvoidAutomaticCdp('https://auth.openai.com/workspace')).toBe(true)
+    expect(shouldAvoidAutomaticCdp('https://accounts.google.com/o/oauth2/v2/auth')).toBe(true)
+    expect(shouldAvoidAutomaticCdp('https://example.org/')).toBe(false)
+    expect(shouldAvoidAutomaticCdp('https://chatgpt.com.evil.example/')).toBe(false)
   })
   it('only grants minimal storage permissions to official OpenAI login origins', () => {
     expect(canGrantOpenAiStorageAccess('storage-access',

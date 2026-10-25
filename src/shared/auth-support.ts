@@ -18,6 +18,12 @@ export function isKnownIdentityProviderUrl(value: string): boolean {
   }
 }
 
+/** Keep official OpenAI/SSO pages debugger-free during first login and after
+ * authentication. The thinking macro uses scoped webview DOM scripts, not CDP. */
+export function shouldAvoidAutomaticCdp(value: string): boolean {
+  return isOfficialOpenAiLoginUrl(value) || isKnownIdentityProviderUrl(value)
+}
+
 /** Login-only pages whose CDP instrumentation can be safely deferred. */
 export function isOpenAiAuthenticationFlowUrl(value: string): boolean {
   try {
