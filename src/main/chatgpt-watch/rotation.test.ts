@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -32,6 +32,15 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(formatWatchDuration(30)).toBe('00:30')
     expect(formatWatchDuration(3_661)).toBe('1:01:01')
     expect(formatWatchDuration(86_400)).toBe('24:00:00')
+  })
+  it('defers automatic tab rotation during user typing and interaction', () => {
+    expect(shouldRotateWatchedTab(30_000, 0, 30, false)).toBe(true)
+    expect(shouldRotateWatchedTab(45_000, 30_000, 30, false)).toBe(false)
+    expect(shouldRotateWatchedTab(61_000, 30_000, 30, false)).toBe(true)
+    expect(shouldRotateWatchedTab(999_999, 30_000, 30, true)).toBe(false)
+    expect(shouldRotateWatchedTab(200_000, 100_000, 3_600, false)).toBe(false)
+    expect(shouldRotateWatchedTab(221_000, 100_000, 3_600, false)).toBe(true)
+    expect(shouldRotateWatchedTab(1_000, 2_000, 15, false)).toBe(false)
   })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')

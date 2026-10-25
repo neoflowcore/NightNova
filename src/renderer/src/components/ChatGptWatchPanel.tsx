@@ -76,10 +76,11 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
+    <p className="nightnova-wb-note">긴급 중단 단축키: <strong>Alt+Shift+X</strong> · ChatGPT 탭에서 입력 중이어도 동작합니다.</p>
     <p className="nightnova-wb-note" role="status">
       감독 중 {watching}개 · 완료 {completed}개 · 직접 확인 {human}개 · 등록 {state.sessions.length}개 (최대 8개)
     </p>
-    <p className="nightnova-wb-note">감독 중인 ChatGPT 프로젝트를 자동으로 화면에 순환 표시합니다. 사용자가 직접 다른 탭을 선택할 수도 있습니다. 프로젝트마다 진행 상태와 재개 조건은 독립적입니다.</p>
+    <p className="nightnova-wb-note">감독 중인 ChatGPT 프로젝트를 실제 브라우저 화면에 순환 표시합니다. 사용자가 입력·클릭하는 동안에는 자동 화면 전환을 잠시 보류하며, 탭마다 감독 상태와 재개 조건은 독립적입니다.</p>
     <div className="nightnova-wb-line">
       <label className="nightnova-wb-check">
         <input type="checkbox" checked={state.rotation.enabled} disabled={working}
@@ -164,7 +165,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       <label>재개 프롬프트
         <textarea rows={5} disabled={active || working}
           value={drafts[settingsId!] ?? config.resumePrompt}
-          onChange={e => setDrafts(prev=>({...prev,[webContentsId!]:e.target.value}))}/>
+          onChange={e => setDrafts(prev=>({...prev,[settingsId!]:e.target.value}))}/>
       </label>
       <button disabled={active || working} onClick={() => configure({resumePrompt:drafts[settingsId!] ?? config.resumePrompt})}>프롬프트 저장</button>
     </>}

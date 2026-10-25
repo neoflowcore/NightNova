@@ -87,6 +87,24 @@ export function formatWatchDuration(seconds: number): string {
     String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
 }
 
+/**
+ * Rotation is a display convenience, never permission to interrupt an operator.
+ * If the person is editing or recently used the browser, defer rotation.
+ * The hold follows the operator's chosen interval (bounded to two minutes).
+ */
+export function shouldRotateWatchedTab(
+  now: number,
+  lastOperatorInputAt: number,
+  intervalSeconds: number,
+  editing: boolean
+): boolean {
+  if (editing || !Number.isFinite(now) || !Number.isFinite(lastOperatorInputAt) ||
+      !Number.isFinite(intervalSeconds) || intervalSeconds <= 0) return false
+  if (lastOperatorInputAt <= 0) return true
+  const holdMs = Math.min(120_000, Math.max(5_000, intervalSeconds * 1000))
+  return now - lastOperatorInputAt >= holdMs
+}
+
 /** Visible tabs follow the user-facing tab strip order, not watch-start order. */
 export function nextWatchedTabId(currentTabId: string, orderedIds: string[]): string | null {
   if (orderedIds.length === 0) return null

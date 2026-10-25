@@ -128,6 +128,15 @@ app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 let mainWindow: BrowserWindow | null = null
 
+// Main-process hotkey must work even when a Chromium webview has focus.
+let emergencyStopChatGptWatch: (() => void) | null = null
+function notifyChatWatchUserActivity(): void {
+  const win = mainWindow
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+    win.webContents.send('chatwatch:user-activity')
+  }
+}
+
 // Window Controls Overlay colors per theme (Windows/Linux). Kept in sync with
 // the renderer's app theme via the 'theme:set-titlebar' IPC handler.
 const TITLEBAR_OVERLAY = {
@@ -641,6 +650,13 @@ setInspectNodeHandler((backendNodeId) =>
 // so nothing fires twice.
 function handleBrowserShortcut(input: Electron.Input): boolean {
   if (input.type !== 'keyDown') return false
+  // Emergency stop is a local operator command, not a model instruction.
+  // Capture it before page input, Ctrl shortcuts or menu accelerators.
+  if (input.alt && input.shift && !input.control && !input.meta &&
+      input.key.toLowerCase() === 'x') {
+    emergencyStopChatGptWatch?.()
+    return true
+  }
   // Esc cancels the element picker regardless of which contents has focus —
   // the webview (the common case while hovering) or the app window.
   if (input.key === 'Escape' && pickerActive) {
@@ -810,7 +826,13 @@ app.whenReady().then(() => {
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'webview') return
     contents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown') notifyChatWatchUserActivity()
       if (handleBrowserShortcut(input)) event.preventDefault()
+    })
+    // Mouse presses in the webview do not bubble into the React renderer.
+    // Report only input activity, never page text or pointer coordinates.
+    contents.on('before-mouse-event', (_event, mouse) => {
+      if (mouse.type === 'mouseDown') notifyChatWatchUserActivity()
     })
     // Right-click menu inside the browsed page.
     contents.on('context-menu', (_e, params) => {
@@ -1020,10 +1042,16 @@ app.whenReady().then(() => {
 
   const nightnova = registerNightnovaIpc(() => mainWindow)
   const chatWatch = registerChatGptWatchIpc(() => mainWindow)
+  emergencyStopChatGptWatch = () => {
+    void chatWatch.stopAll().catch(error => {
+      console.error('[NightNova] Emergency stop failed:', error)
+    })
+  }
   let finishQuit = false
   app.on('before-quit', (event) => {
     if (finishQuit) return
     chatWatch.close()
+    emergencyStopChatGptWatch = null
     const state = nightnova.state()
     if (state.status !== 'running' && state.status !== 'stopping') return
     event.preventDefault()

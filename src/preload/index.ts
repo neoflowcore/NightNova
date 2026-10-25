@@ -247,6 +247,11 @@ const api = {
       const listener = (_event: unknown, state: ChatWatchDashboard) => callback(state)
       ipcRenderer.on('chatwatch:state', listener)
       return () => ipcRenderer.removeListener('chatwatch:state', listener)
+    },
+    onUserActivity: (callback: () => void): (() => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on('chatwatch:user-activity', listener)
+      return () => ipcRenderer.removeListener('chatwatch:user-activity', listener)
     }
   },
   nightnova: {

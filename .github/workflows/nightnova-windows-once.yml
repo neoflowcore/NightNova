@@ -1,5 +1,5 @@
 name: NightNova Windows One-Shot
-# Release gate revision 11: completion/URL guard consolidated final Windows gate.
+# Release gate revision 12: operator input-safe rotation, emergency hotkey and DOM safety tests.
 on:
   push:
     branches:

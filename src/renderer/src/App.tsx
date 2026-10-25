@@ -37,6 +37,7 @@ import { useViewportStore } from '@/stores/viewport'
 import { useNightnovaSplitStore, type NightnovaSplitMode } from '@/stores/split-view'
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
+import { shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
 
 type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
@@ -55,12 +56,32 @@ function App() {
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
   const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
+  const lastOperatorActivityAt = useRef(0)
+  useEffect(() => {
+    const markActivity = (): void => { lastOperatorActivityAt.current = Date.now() }
+    document.addEventListener('keydown', markActivity, true)
+    document.addEventListener('pointerdown', markActivity, true)
+    const offGuest = window.rev.chatWatch.onUserActivity(markActivity)
+    return () => {
+      document.removeEventListener('keydown', markActivity, true)
+      document.removeEventListener('pointerdown', markActivity, true)
+      offGuest()
+    }
+  }, [])
   useEffect(() => window.rev.chatWatch.onState(setWatchDashboard), [])
   useEffect(() => { void window.rev.chatWatch.state().then(setWatchDashboard).catch(() => {}) }, [])
   useEffect(() => { void window.rev.chatWatch.visible(activeTab?.webContentsId ?? null).catch(() => {}) }, [activeTab?.webContentsId])
   useEffect(() => {
     if (!watchDashboard?.rotation.enabled || watchDashboard.sessions.filter(s => s.snapshot.status === 'watching').length < 2) return
     const interval = setInterval(() => {
+      // Do not steal focus while the operator is navigating or typing.
+      if (useBrowserModeStore.getState().mode !== 'embedded') return
+      const focused = document.activeElement
+      const editing = focused instanceof HTMLInputElement ||
+        focused instanceof HTMLTextAreaElement ||
+        focused?.getAttribute('contenteditable') === 'true'
+      if (!shouldRotateWatchedTab(Date.now(), lastOperatorActivityAt.current,
+        watchDashboard.rotation.intervalSeconds, editing)) return
       const { tabs, activeId, selectTab } = useTabsStore.getState()
       const ids = tabs.filter(t => watchDashboard.sessions.some(s => s.webContentsId === t.webContentsId && s.snapshot.status === 'watching')).map(t => t.id)
       const current = ids.indexOf(activeId)
@@ -435,7 +456,7 @@ function App() {
         )}
         {watchDashboard?.sessions.some(s => s.snapshot.status === 'watching') && (
           <button type="button" className="toolbar-btn"
-            title="긴급 중단: 모든 자동 감독 중지"
+            title="긴급 중단: 모든 자동 감독 중지 (Alt+Shift+X)"
             style={{ WebkitAppRegion: 'no-drag', marginBottom: 6, color: 'var(--status-error)' } as React.CSSProperties}
             onClick={() => { void window.rev.chatWatch.stopAll().catch(console.error) }}>
             ■ 감독 중단
@@ -909,7 +930,7 @@ function App() {
             <AgentModeTab label="ChatGPT 감독" active={agentMode === 'watch'} onClick={() => setAgentMode('watch')} />
             {watchDashboard?.sessions.some(s => s.snapshot.status === 'watching') && (
               <button type="button" style={{ marginLeft: 'auto', color: 'var(--status-error)', fontSize: 11 }}
-                title="감독 중인 모든 대화를 즉시 중단"
+                title="감독 중인 모든 대화를 즉시 중단 (Alt+Shift+X)"
                 onClick={() => { void window.rev.chatWatch.stopAll().catch(() => {}) }}>
                 ■ 전체 긴급 중단
               </button>
