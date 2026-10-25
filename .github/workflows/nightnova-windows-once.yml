@@ -1,5 +1,5 @@
 name: NightNova Windows One-Shot
-# Release gate revision 10: consolidated operator HUD and stop-safety acceptance, one build.
+# Release gate revision 11: completion/URL guard consolidated final Windows gate.
 on:
   push:
     branches:
