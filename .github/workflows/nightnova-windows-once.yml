@@ -1,5 +1,5 @@
 name: NightNova Windows One-Shot
-# Release gate revision 12: operator input-safe rotation, emergency hotkey and DOM safety tests.
+# Release gate revision 13: focused OpenAI login compatibility candidate, one Windows test and build.
 on:
   push:
     branches:
