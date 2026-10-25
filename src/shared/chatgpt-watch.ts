@@ -105,6 +105,14 @@ export function shouldRotateWatchedTab(
   return now - lastOperatorInputAt >= holdMs
 }
 
+/** A real keyboard/mouse action blocks autonomous Send for a short grace interval.
+ * It does not change the polling timer or pre-approve any action. */
+export const OPERATOR_SEND_GRACE_MS = 8_000
+export function canSendAfterOperatorActivity(now: number, lastActivityAt: number): boolean {
+  if (!Number.isFinite(now) || !Number.isFinite(lastActivityAt) || now < lastActivityAt) return false
+  return lastActivityAt <= 0 || now - lastActivityAt >= OPERATOR_SEND_GRACE_MS
+}
+
 /** Visible tabs follow the user-facing tab strip order, not watch-start order. */
 export function nextWatchedTabId(currentTabId: string, orderedIds: string[]): string | null {
   if (orderedIds.length === 0) return null

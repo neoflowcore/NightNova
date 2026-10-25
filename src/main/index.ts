@@ -151,7 +151,9 @@ function ensureAuthDiagnostics(ses:Electron.Session):AuthStatus {
 
 // Main-process hotkey must work even when a Chromium webview has focus.
 let emergencyStopChatGptWatch: (() => void) | null = null
+let reportWatchOperatorActivity: (() => void) | null = null
 function notifyChatWatchUserActivity(): void {
+  reportWatchOperatorActivity?.()
   const win = mainWindow
   if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
     win.webContents.send('chatwatch:user-activity')
@@ -1092,6 +1094,7 @@ app.whenReady().then(() => {
 
   const nightnova = registerNightnovaIpc(() => mainWindow)
   const chatWatch = registerChatGptWatchIpc(() => mainWindow)
+  reportWatchOperatorActivity = () => chatWatch.noteOperatorActivity()
   emergencyStopChatGptWatch = () => {
     void chatWatch.stopAll().catch(error => {
       console.error('[NightNova] Emergency stop failed:', error)
@@ -1102,6 +1105,7 @@ app.whenReady().then(() => {
     if (finishQuit) return
     chatWatch.close()
     emergencyStopChatGptWatch = null
+    reportWatchOperatorActivity = null
     const state = nightnova.state()
     if (state.status !== 'running' && state.status !== 'stopping') return
     event.preventDefault()

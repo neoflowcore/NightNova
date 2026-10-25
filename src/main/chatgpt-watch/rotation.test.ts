@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -41,6 +41,14 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(shouldRotateWatchedTab(200_000, 100_000, 3_600, false)).toBe(false)
     expect(shouldRotateWatchedTab(221_000, 100_000, 3_600, false)).toBe(true)
     expect(shouldRotateWatchedTab(1_000, 2_000, 15, false)).toBe(false)
+  })
+  it('never sends while the operator is actively interacting', () => {
+    expect(canSendAfterOperatorActivity(100_000, 0)).toBe(true)
+    expect(canSendAfterOperatorActivity(100_000, 99_999)).toBe(false)
+    expect(canSendAfterOperatorActivity(100_000, 100_000 - OPERATOR_SEND_GRACE_MS + 1)).toBe(false)
+    expect(canSendAfterOperatorActivity(100_000, 100_000 - OPERATOR_SEND_GRACE_MS)).toBe(true)
+    expect(canSendAfterOperatorActivity(99_000, 100_000)).toBe(false)
+    expect(canSendAfterOperatorActivity(Number.NaN, 1)).toBe(false)
   })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')

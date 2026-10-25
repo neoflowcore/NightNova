@@ -73,11 +73,15 @@ export class ChatGptConversationWatch {
 
   initialize(): Promise<void> {
     if (!this.starting) {
+      const initializationEpoch = this.epoch
       this.starting = (async () => {
         try {
           const raw = await readFile(getSavePath(this.storageKey), 'utf8')
           if (raw.length > 25_000) throw new Error('설정 크기 제한 초과')
           const saved = JSON.parse(raw) as { config?: Partial<ChatWatchConfig> }
+          // A stop/pause during async disk read must not resurrect a stale
+          // state or overwrite a newer operator action.
+          if (initializationEpoch !== this.epoch) return
           if (saved && saved.config) this.stateData.config = this.validateConfig(saved.config)
           // Never resume automatic web actions after an app restart, even if a
           // session was active when the process crashed.

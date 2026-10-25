@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  DEFAULT_CHAT_WATCH_ROTATION, assertChatWatchSeconds,
+  DEFAULT_CHAT_WATCH_ROTATION, assertChatWatchSeconds, canSendAfterOperatorActivity,
   type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchRotation
 } from '../../shared/chatgpt-watch'
 import { ChatGptConversationWatch } from './service'
@@ -13,6 +13,7 @@ const MAX_TABS = 8
 interface WatchedTab {
   url: string
   watch: ChatGptConversationWatch
+  ready: Promise<void>
 }
 
 /**
@@ -24,6 +25,7 @@ export class ChatGptWatchHub {
   private readonly slots = new Map<number, WatchedTab>()
   private rotation: ChatWatchRotation = { ...DEFAULT_CHAT_WATCH_ROTATION }
   private visibleTabId: number | null = null
+  private lastOperatorActivityAt = 0
   private issues: string[] = []
   /** Cancels a queued multi-tab start before it can arm another tab. */
   private batchEpoch = 0
@@ -105,6 +107,11 @@ export class ChatGptWatchHub {
     this.visibleTabId = id
   }
 
+  /** Only an observed human input event advances this guard, not page scripts. */
+  noteOperatorActivity(): void {
+    this.lastOperatorActivityAt = Date.now()
+  }
+
   private guest(id: number): WebContents {
     const win = this.mainWindow()
     if (!win || win.isDestroyed() || !Number.isSafeInteger(id) || id <= 0) {
@@ -124,7 +131,11 @@ export class ChatGptWatchHub {
     if (!isChatGptConversation(url)) throw new Error('기존 ChatGPT 대화 탭에서만 감독을 시작할 수 있습니다.')
     const old = this.slots.get(id)
     if (old) {
-      if (sameConversation(old.url, url)) return old.watch
+      if (sameConversation(old.url, url)) {
+        // Do not configure/start an incompletely restored slot.
+        await old.ready
+        return old.watch
+      }
       if (old.watch.state().status === 'watching') {
         throw new Error('감독 중인 탭이 다른 대화로 이동했습니다. 먼저 그 탭의 감독을 중지하세요.')
       }
@@ -140,10 +151,12 @@ export class ChatGptWatchHub {
         // Do not auto-submit in minimized or hidden windows: the operator
         // must be able to observe the real Chromium tab when it acts.
         return this.visibleTabId === webContentsId &&
+          canSendAfterOperatorActivity(Date.now(), this.lastOperatorActivityAt) &&
           !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
       }
     )
-    this.slots.set(id, { url, watch })
+    const ready = watch.initialize()
+    this.slots.set(id, { url, watch, ready })
     // Closing a tab must release a supervision slot, not leave it consuming
     // one of the eight available places until the entire browser restarts.
     wc.once('destroyed', () => {
@@ -153,7 +166,7 @@ export class ChatGptWatchHub {
       if (this.visibleTabId === id) this.visibleTabId = null
       this.notify()
     })
-    await watch.initialize()
+    await ready
     this.notify()
     return watch
   }
@@ -231,7 +244,10 @@ export class ChatGptWatchHub {
     this.batchEpoch++
     // Start every pause synchronously before waiting for any disk writes.
     // This also invalidates starts that are still inspecting the page.
-    const pending = [...this.slots.values()].map(({ watch }) => watch.pause())
+    // Preserve an already completed/paused session. Only running sessions stop.
+    const pending = [...this.slots.values()]
+      .filter(({ watch }) => watch.state().status === 'watching')
+      .map(({ watch }) => watch.pause())
     this.notify()
     await Promise.all(pending)
     return this.state()
