@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideChatWatch, detectChatWatchActionRequests } from './policy'
+import { decideChatWatch, detectChatWatchActionRequests, isChatGptConversation } from './policy'
 import type { ChatWatchDomObservation, ChatWatchStopConditions } from '../../shared/chatgpt-watch'
 
 const base: ChatWatchDomObservation = {
@@ -44,6 +44,11 @@ describe('ChatGPT supervisor configurable stop categories', () => {
   })
   it('fails closed if the latest message role cannot be verified', () => {
     expect(decideChatWatch({ ...base, lastMessageRole: 'unknown' }, context).type).toBe('needs-human')
+  })
+  it('recognizes supported nested ChatGPT project conversations', () => {
+    expect(isChatGptConversation('https://chatgpt.com/g/g-demo-project/c/12345678-abcd-1234-efab-123456789012')).toBe(true)
+    expect(isChatGptConversation('http://chatgpt.com/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
+    expect(isChatGptConversation('https://chatgpt.com.evil.test/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
   })
   it('does not send another prompt while generation is ongoing', () => {
     expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 20_000 }).type)

@@ -16,6 +16,11 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(() => assertChatWatchSeconds(1, 'resume')).toThrow()
     expect(() => assertChatWatchSeconds(0, 'rotation')).toThrow()
   })
+  it('does not accept timers with fractional seconds or negative input', () => {
+    expect(Number.isNaN(secondsFromIntervalInput(1.25, 'seconds'))).toBe(true)
+    expect(Number.isNaN(secondsFromIntervalInput(-1, 'hours'))).toBe(true)
+    expect(secondsFromIntervalInput(2.5, 'minutes')).toBe(150)
+  })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')
     expect(nextWatchedTabId('t2',['t1','t2','t3'])).toBe('t3')

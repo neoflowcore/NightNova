@@ -238,6 +238,7 @@ const api = {
     start: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:start', id),
     startMany: (ids: number[]): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:start-many', ids),
     inspect: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:inspect', id),
+    checkNow: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:check-now', id),
     pause: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:pause', id),
     stop: (id: number): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:stop', id),
     pauseAll: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:pause-all'),

@@ -1,16 +1,7 @@
-import type { ChatWatchDomObservation, ChatWatchStopConditions } from '../../shared/chatgpt-watch'
+import { isSupportedChatGptConversationUrl, type ChatWatchDomObservation, type ChatWatchStopConditions } from '../../shared/chatgpt-watch'
 
 export function isChatGptConversation(url: string): boolean {
-  try {
-    const u = new URL(url)
-    if (u.protocol !== 'https:' ||
-        !['chatgpt.com', 'chat.openai.com'].includes(u.hostname)) return false
-    // Restrict to a concrete existing conversation, not a home page, login,
-    // arbitrary website, or a different chat selected during supervision.
-    return /(?:^|\/)c\/[a-zA-Z0-9-]{12,}(?:\/|$)/.test(u.pathname)
-  } catch {
-    return false
-  }
+  return isSupportedChatGptConversationUrl(url)
 }
 
 export function sameConversation(a: string, b: string): boolean {
@@ -113,7 +104,7 @@ export function decideChatWatch(
       ? { type: 'needs-human', reason: '최근 사용자 메시지의 답변을 확인하지 못했습니다. 중복 전송 방지를 위해 중단합니다.' }
       : { type: 'wait', reason: '마지막 메시지가 사용자 요청입니다. 답변을 기다립니다.' }
   }
-  if (page.lastMessageRole !== 'assistant' && page.lastMessageRole !== 'user') {
+  if (page.lastMessageRole !== 'assistant') {
     return { type: 'needs-human', reason: '마지막 메시지 역할 판독 실패. 사이트 구조를 확인하세요.' }
   }
   if (ctx.awaitingResponse) {

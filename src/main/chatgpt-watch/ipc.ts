@@ -50,6 +50,10 @@ export function registerChatGptWatchIpc(
     await access(event)
     return watch.start(webContentsId)
   })
+  ipcMain.handle('chatwatch:check-now', async (event, id: number) => {
+    await access(event)
+    return watch.checkNow(id)
+  })
   ipcMain.handle('chatwatch:inspect', async (event, webContentsId: number) => {
     await access(event)
     return watch.inspect(webContentsId)

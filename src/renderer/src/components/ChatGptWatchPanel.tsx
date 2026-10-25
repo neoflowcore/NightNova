@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Tab } from '@/stores/tabs'
-import { intervalInputFromSeconds, secondsFromIntervalInput, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
+import { isSupportedChatGptConversationUrl, intervalInputFromSeconds, secondsFromIntervalInput, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
 
 export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webContentsId: number | null }) {
   const [state, setState] = useState<ChatWatchDashboard | null>(null)
@@ -20,7 +20,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     try { setState(await job()) } catch (e) { setError(String(e)) } finally { setWorking(false) }
   }
   if (!state) return <section className="nightnova-wb-section">ChatGPT 감독 연결 중... {error}</section>
-  const targets = tabs.filter(t => t.webContentsId && /^https:\/\/(?:chatgpt\.com|chat\.openai\.com)\/c\/[-\w]{12,}/.test(t.url))
+  const targets = tabs.filter(t => t.webContentsId && isSupportedChatGptConversationUrl(t.url))
   const current = state.sessions.find(s => s.webContentsId === webContentsId)
   const config = current?.snapshot.config
   const active = current?.snapshot.status === 'watching'
@@ -83,11 +83,14 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
+        {snap?.lastProgressAt && <p className="nightnova-wb-note">마지막 진행: {new Date(snap.lastProgressAt).toLocaleTimeString()} · 최근 검사: {snap.lastCheckAt ? new Date(snap.lastCheckAt).toLocaleTimeString() : '없음'}</p>}
         <div className="nightnova-wb-line">
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.configure(id, {}))}>설정 준비</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id))}>시작</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
           <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.inspect(id))}>상태 확인</button>
+          <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.checkNow(id))}>지금 판단</button>
+          <button disabled={working || !snap || snap.status === 'off'} onClick={() => void run(() => window.rev.chatWatch.stop(id))}>종료</button>
         </div>
       </div>
     })}

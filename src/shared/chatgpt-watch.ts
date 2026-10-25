@@ -47,6 +47,18 @@ export interface ChatWatchDashboard {
   errors: string[]
 }
 
+/** Shared allowlist, also used in renderer to recognize nested ChatGPT project conversations. */
+export function isSupportedChatGptConversationUrl(url: string): boolean {
+  try {
+    const value = new URL(url)
+    return value.protocol === 'https:' &&
+      (value.hostname === 'chatgpt.com' || value.hostname === 'chat.openai.com') &&
+      /(?:^|\/)c\/[a-zA-Z0-9-]{12,}(?:\/|$)/.test(value.pathname)
+  } catch {
+    return false
+  }
+}
+
 /** Visible tabs follow the user-facing tab strip order, not watch-start order. */
 export function nextWatchedTabId(currentTabId: string, orderedIds: string[]): string | null {
   if (orderedIds.length === 0) return null

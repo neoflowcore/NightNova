@@ -10,6 +10,18 @@ import { isChatGptConversation, sameConversation, decideChatWatch } from './poli
 import { CHAT_WATCH_INSPECT_SCRIPT, chatWatchPrepareScript, chatWatchCommitScript } from './dom'
 
 const MAX_INSPECT_TEXT = 4000
+const DOM_OBSERVATION_TIMEOUT_MS = 15_000
+
+async function withDomTimeout<T>(read: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('ChatGPT 화면 판독 15초 제한시간 초과')), DOM_OBSERVATION_TIMEOUT_MS)
+    timer.unref?.()
+    read.then(
+      value => { clearTimeout(timer); resolve(value) },
+      error => { clearTimeout(timer); reject(error) }
+    )
+  })
+}
 function assertMaxAutoMessages(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 24) {
     throw new Error('자동 재개 횟수는 1~24의 정수여야 합니다.')
@@ -163,7 +175,7 @@ export class ChatGptConversationWatch {
 
   private async inspectGuest(guest: WebContents): Promise<ChatWatchDomObservation> {
     if (!isChatGptConversation(guest.getURL())) throw new Error('ChatGPT의 기존 대화 주소가 아닙니다.')
-    const raw: unknown = await guest.executeJavaScript(CHAT_WATCH_INSPECT_SCRIPT, true)
+    const raw: unknown = await withDomTimeout(guest.executeJavaScript(CHAT_WATCH_INSPECT_SCRIPT, true))
     if (!raw || typeof raw !== 'object') throw new Error('대화 화면을 읽을 수 없습니다.')
     const value = raw as ChatWatchDomObservation
     if (!sameConversation(value.url, guest.getURL())) throw new Error('대화 주소가 읽는 도중 변경됐습니다.')
@@ -186,16 +198,22 @@ export class ChatGptConversationWatch {
 
   async start(id: number): Promise<ChatWatchSnapshot> {
     if (this.stateData.status === 'watching') throw new Error('이미 감독 중입니다.')
+    const requestedEpoch = this.epoch
     const guest = this.guest(id)
     const url = guest.getURL()
     if (!isChatGptConversation(url)) {
       throw new Error('ChatGPT에서 기존 대화를 열어주세요. 새 대화 홈 화면은 자동화하지 않습니다.')
     }
     const page = await this.inspectGuest(guest)
+    // A Stop/Pause or concurrent Start during DOM inspection invalidates this request.
+    if (this.epoch !== requestedEpoch || this.stateData.status === 'watching') {
+      throw new Error('감독 준비 중 상태가 변경됐습니다. 현재 상태를 다시 확인하세요.')
+    }
     if (!page.assistantCount || page.needsLogin || page.challenge || page.lastMessageRole === 'unknown') {
       throw new Error('로그인된 ChatGPT 대화에서 한 번 이상 답변이 오간 다음 감독을 시작하세요.')
     }
     this.stopTimer()
+    const armedEpoch = this.epoch
     this.stateData.status = 'watching'
     this.stateData.reason = null
     this.stateData.webContentsId = id
@@ -215,6 +233,7 @@ export class ChatGptConversationWatch {
     this.stableChecks = 0
     this.updatePage(page)
     await this.persist()
+    if (this.epoch !== armedEpoch || this.stateData.status !== 'watching') return this.state()
     this.timer = setInterval(() => { void this.check() }, this.stateData.config.checkIntervalSeconds * 1000)
     this.timer.unref?.()
     this.addLog('info', 'ChatGPT 대화 감독 시작. 자동 재개 간격: ' +
@@ -281,6 +300,13 @@ export class ChatGptConversationWatch {
     this.updatePage(page)
     this.addLog('info', '대화 화면 진단: 응답 ' + page.assistantCount +
       '개, 생성 중=' + String(page.generating) + ', 입력창=' + String(page.composerReady))
+    return this.state()
+  }
+
+  /** Operator-requested decision pass. Respects the same idle time and send locks as periodic checks. */
+  async checkNow(): Promise<ChatWatchSnapshot> {
+    if (this.stateData.status !== 'watching') throw new Error('먼저 이 탭의 감독을 시작하세요.')
+    await this.check()
     return this.state()
   }
 
@@ -353,7 +379,7 @@ export class ChatGptConversationWatch {
     if (!this.isArmed(epoch, wc.id)) return
     const fresh = await this.inspectGuest(this.activeGuest())
     if (!this.isArmed(epoch, wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
-        fresh.userCount !== expected.userCount || fresh.lastMessageRole === 'user' ||
+        fresh.userCount !== expected.userCount || fresh.lastMessageRole !== 'assistant' ||
         fresh.generating || fresh.hasDraft || fresh.needsLogin || fresh.challenge ||
         !fresh.online || !fresh.composerReady) return
 
@@ -401,9 +427,14 @@ export class ChatGptConversationWatch {
     this.stateData.sentCount++
     this.stateData.lastSentAt = Date.now()
     this.stateData.lastProgressAt = Date.now()
-    this.stateData.awaitingResponse = true
+    // A manual stop may have occurred after the click; record the result but
+    // never revive supervision or set up another automatic send.
+    const stillWatching = this.epoch === epoch && this.stateData.status === 'watching'
+    this.stateData.awaitingResponse = stillWatching
     this.stateData.lastDecision = {
-      at: Date.now(), type: 'wait', reason: '자동 재개 메시지를 전송했습니다. 다음 답변을 기다립니다.'
+      at: Date.now(), type: 'wait',
+      reason: stillWatching ? '자동 재개 메시지를 전송했습니다. 다음 답변을 기다립니다.' :
+        '감독 중단 직전 실행된 전송이 확인됐습니다. 자동 감독은 다시 시작하지 않습니다.'
     }
     this.userCount = confirmation.userCount
     this.stableChecks = 0

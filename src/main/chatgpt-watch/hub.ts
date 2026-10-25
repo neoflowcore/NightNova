@@ -136,6 +136,15 @@ export class ChatGptWatchHub {
       (webContentsId) => this.visibleTabId === webContentsId
     )
     this.slots.set(id, { url, watch })
+    // Closing a tab must release a supervision slot, not leave it consuming
+    // one of the eight available places until the entire browser restarts.
+    wc.once('destroyed', () => {
+      if (this.slots.get(id)?.watch !== watch) return
+      watch.close()
+      this.slots.delete(id)
+      if (this.visibleTabId === id) this.visibleTabId = null
+      this.notify()
+    })
     await watch.initialize()
     this.notify()
     return watch
@@ -174,6 +183,14 @@ export class ChatGptWatchHub {
   async inspect(id: number): Promise<ChatWatchDashboard> {
     const watch = await this.slot(id)
     await watch.inspect(id)
+    return this.state()
+  }
+
+  async checkNow(id: number): Promise<ChatWatchDashboard> {
+    const watch = this.slots.get(id)?.watch
+    if (!watch) throw new Error('감독을 시작한 ChatGPT 탭만 즉시 판단할 수 있습니다.')
+    await watch.checkNow()
+    this.notify()
     return this.state()
   }
 
