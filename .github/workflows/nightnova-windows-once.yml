@@ -1,11 +1,7 @@
-name: NightNova Windows One-Shot
-# Release gate revision 13: focused OpenAI login compatibility candidate, one Windows test and build.
+name: NightNova Windows Manual Acceptance
+# ACTION ECONOMY STRICT: never run on a push. Generate EXE/artifact ONLY
+# when the operator explicitly requests an installer or hands-on acceptance.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/nightnova-windows-once.yml
   workflow_dispatch:
 
 permissions:
@@ -25,7 +21,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'false'
     steps:
-      - name: Checkout Nightnova source
+      - name: Checkout NightNova source
         uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -50,9 +46,9 @@ jobs:
       - name: TypeScript integration check (one pass)
         shell: pwsh
         run: npm run typecheck
-      - name: Focused Nightnova runtime tests
+      - name: Focused NightNova runtime tests
         shell: pwsh
-        run: npx --no-install vitest run src/main/nightnova src/main/acp-detect.test.ts src/main/chatgpt-watch
+        run: npx --no-install vitest run src/main/nightnova src/main/acp-detect.test.ts src/main/chatgpt-watch src/main/auth-support.test.ts
       - name: Build Electron and Windows NSIS
         shell: pwsh
         run: npm run package:win

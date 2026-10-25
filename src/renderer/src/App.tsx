@@ -38,7 +38,7 @@ import { useNightnovaSplitStore, type NightnovaSplitMode } from '@/stores/split-
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
 import { shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
-import { isOfficialOpenAiLoginUrl, OPENAI_LOGIN_ENTRY_URL } from '../../shared/auth-support'
+import { isOfficialOpenAiLoginUrl, OPENAI_LOGIN_ENTRY_URL, type AuthStatus } from '../../shared/auth-support'
 
 type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
@@ -57,6 +57,8 @@ function App() {
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
   const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
+  const [authDiagnostics,setAuthDiagnostics]=useState<AuthStatus|null>(null)
+  const [authBusy,setAuthBusy]=useState(false)
   const lastOperatorActivityAt = useRef(0)
   useEffect(() => {
     const markActivity = (): void => { lastOperatorActivityAt.current = Date.now() }
@@ -611,12 +613,22 @@ function App() {
               </>
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
+              <button type="button" className="toolbar-btn" title="민감정보를 제외한 로그인 진단"
+                onClick={() => {void window.rev.authRecovery.diagnostics(activeTab.id)
+                  .then(setAuthDiagnostics).catch(console.warn)}}>로그인 진단</button>
+            )}
+            {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && authDiagnostics && (
+              <span role="status">{authDiagnostics.proxy} · 오류 {authDiagnostics.failures.length} · HTTP {authDiagnostics.failures.at(-1)?.status ?? '-'}</span>
+            )}
+            {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
               <button className="toolbar-btn" type="button"
                 title="OpenAI 로그인 복구: 현재 프로필의 임시 캐시만 정리하고 다시 로그인합니다. 쿠키는 유지됩니다."
+                disabled={authBusy}
                 onClick={() => {
+                  setAuthBusy(true)
                   void window.rev.authRecovery.retryOpenAi(activeTab.id).then(() => {
                     activeRef()?.loadURL(OPENAI_LOGIN_ENTRY_URL)
-                  }).catch(error => console.warn('[NightNova] login retry failed', error))
+                  }).catch(error => console.warn('[NightNova] login retry failed', error)).finally(()=>setAuthBusy(false))
                 }}>
                 로그인 복구
               </button>

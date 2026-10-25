@@ -4,6 +4,21 @@
  */
 export const OPENAI_LOGIN_ENTRY_URL = 'https://chatgpt.com/auth/login' as const
 
+/** Login-only pages whose CDP instrumentation can be safely deferred. */
+export function isOpenAiAuthenticationFlowUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:') return false
+    if (url.hostname === 'auth.openai.com') return true
+    if ((url.hostname === 'chatgpt.com' || url.hostname === 'chat.openai.com') &&
+        /^\/(?:auth|login)(?:\/|$)/i.test(url.pathname)) return true
+    return ['accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com']
+      .includes(url.hostname)
+  } catch {
+    return false
+  }
+}
+
 const LOGIN_HOSTS = new Set([
   'auth.openai.com', 'chatgpt.com', 'chat.openai.com', 'openai.com'
 ])
@@ -32,11 +47,13 @@ export interface AuthNetworkDiagnostic {
   status: number
   resourceType: string
   contentType: string
-  issue: 'http-error' | 'html-api-response'
+  issue: 'http-error' | 'html-api-response' | 'network-error'
 }
 export interface AuthStatus {
   proxy: 'direct' | 'proxy' | 'unknown'
   failures: AuthNetworkDiagnostic[]
+  observedRequests: number
+  lastObservedAt: number | null
 }
 
 interface NetworkResponseLike {
@@ -64,4 +81,25 @@ export function summarizeOpenAiAuthResponse(
     at, host: new URL(data.url).hostname, status, resourceType, contentType,
     issue: statusProblem ? 'http-error' : 'html-api-response'
   }
+}
+
+/** Network failures are represented without raw error strings, URLs or tokens. */
+export function summarizeOpenAiNetworkError(
+  data: { url: string; resourceType: string }, at: number
+): AuthNetworkDiagnostic | null {
+  if (!isOfficialOpenAiLoginUrl(data.url)) return null
+  return {
+    at, host: new URL(data.url).hostname, status: 0,
+    resourceType: String(data.resourceType).slice(0,30),
+    contentType: '', issue: 'network-error'
+  }
+}
+
+/** Small ephemeral ring buffer, never persisted in NightNova's profile. */
+export function appendAuthDiagnostic(
+  previous: readonly AuthNetworkDiagnostic[],
+  item: AuthNetworkDiagnostic, limit = 24
+): AuthNetworkDiagnostic[] {
+  const max = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 100) : 24
+  return [...previous, item].slice(-max)
 }

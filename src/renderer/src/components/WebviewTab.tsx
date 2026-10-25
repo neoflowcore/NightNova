@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 import { useHistoryStore } from '@/stores/history'
+import { isOpenAiAuthenticationFlowUrl } from '../../../shared/auth-support'
 import type { Tab } from '@/stores/tabs'
 import { useTabsStore } from '@/stores/tabs'
 import { useAppThemeStore } from '@/stores/app-theme'
@@ -105,6 +106,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
         return
       }
       if (!id || id <= 0) return
+      if (isOpenAiAuthenticationFlowUrl(wv.getURL())) return
       const ok = await window.rev.cdp.attach(id)
       if (ok) {
         attached = true

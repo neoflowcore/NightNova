@@ -3,8 +3,11 @@ import {
   isOfficialOpenAiLoginUrl,
   canGrantOpenAiStorageAccess,
   summarizeOpenAiAuthResponse,
+  summarizeOpenAiNetworkError,
+  isOpenAiAuthenticationFlowUrl,
+  appendAuthDiagnostic,
   OPENAI_LOGIN_ENTRY_URL
-} from '../../shared/auth-support'
+} from '../shared/auth-support'
 
 describe('OpenAI login compatibility and privacy boundaries', () => {
   it('recognizes only HTTPS official hosts (not lookalike domains)', () => {
@@ -49,6 +52,25 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
       at: 1234, host: 'chatgpt.com', status: 403,
       contentType: 'application/json', resourceType: 'xhr', issue: 'http-error'
     })
+  })
+  it('recognizes only actual login routes and known identity-provider hosts', () => {
+    expect(isOpenAiAuthenticationFlowUrl('https://chatgpt.com/auth/login')).toBe(true)
+    expect(isOpenAiAuthenticationFlowUrl('https://auth.openai.com/workspace')).toBe(true)
+    expect(isOpenAiAuthenticationFlowUrl('https://accounts.google.com/o/oauth2/v2/auth')).toBe(true)
+    expect(isOpenAiAuthenticationFlowUrl('https://appleid.apple.com/auth/authorize')).toBe(true)
+    expect(isOpenAiAuthenticationFlowUrl('https://login.microsoftonline.com/common/oauth2')).toBe(true)
+    expect(isOpenAiAuthenticationFlowUrl('https://chatgpt.com/c/conversation')).toBe(false)
+    expect(isOpenAiAuthenticationFlowUrl('https://accounts.google.com.evil.test')).toBe(false)
+  })
+  it('keeps only bounded safe diagnostic fields, even after many errors', () => {
+    const events = Array.from({length:42},(_,i) => summarizeOpenAiNetworkError({
+      url: 'https://auth.openai.com/authorize?token=SECRET' + i, resourceType:'xhr'
+    }, i)!).filter(Boolean)
+    const bounded = events.reduce((items, event) => appendAuthDiagnostic(items,event,24), [])
+    expect(bounded.length).toBe(24)
+    expect(bounded[0].at).toBe(18)
+    expect(JSON.stringify(bounded)).not.toContain('SECRET')
+    expect(summarizeOpenAiNetworkError({ url:'https://other.example/private',resourceType:'xhr' },1)).toBeNull()
   })
   it('ignores unrelated and successful ordinary traffic', () => {
     expect(summarizeOpenAiAuthResponse({

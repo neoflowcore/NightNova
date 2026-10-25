@@ -17,6 +17,7 @@ import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
 import { registerNightnovaIpc } from './nightnova/ipc'
 import { registerChatGptWatchIpc } from './chatgpt-watch/ipc'
+import { canGrantOpenAiStorageAccess, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -127,6 +128,26 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 let mainWindow: BrowserWindow | null = null
+const authDiagnostics=new WeakMap<Electron.Session,AuthStatus>()
+function ensureAuthDiagnostics(ses:Electron.Session):AuthStatus {
+  const previous=authDiagnostics.get(ses)
+  if(previous)return previous
+  const state:AuthStatus={proxy:'unknown',failures:[],observedRequests:0,lastObservedAt:null}
+  authDiagnostics.set(ses,state)
+  const official=(value:string):boolean=>{
+    try {const u=new URL(value);return u.protocol==='https:' && ['auth.openai.com','chatgpt.com','chat.openai.com','openai.com'].includes(u.hostname)} catch{return false}
+  }
+  ses.webRequest.onCompleted(details=>{
+    if(official(details.url)){state.observedRequests++;state.lastObservedAt=Date.now()}
+    const issue=summarizeOpenAiAuthResponse(details,Date.now())
+    if(issue)state.failures=appendAuthDiagnostic(state.failures,issue)
+  })
+  ses.webRequest.onErrorOccurred(details=>{
+    const issue=summarizeOpenAiNetworkError(details,Date.now())
+    if(issue)state.failures=appendAuthDiagnostic(state.failures,issue)
+  })
+  return state
+}
 
 // Main-process hotkey must work even when a Chromium webview has focus.
 let emergencyStopChatGptWatch: (() => void) | null = null
@@ -815,9 +836,14 @@ app.whenReady().then(() => {
   // session — skip it so clipboard/etc. in the renderer keep working.
   app.on('session-created', (createdSession) => {
     if (createdSession === session.defaultSession) return
-    createdSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
-    createdSession.setPermissionCheckHandler(() => false)
+    createdSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+      const top=wc?.getURL() ?? ''
+      callback(canGrantOpenAiStorageAccess(permission,top,details?.requestingUrl ?? top))
+    })
+    createdSession.setPermissionCheckHandler((wc,permission,requestingOrigin) =>
+      canGrantOpenAiStorageAccess(permission,wc?.getURL() ?? '',requestingOrigin))
     attachDownloads(createdSession)
+    ensureAuthDiagnostics(createdSession)
   })
 
   // Webviews have their own webContents, so keys pressed while the page has
@@ -892,6 +918,16 @@ app.whenReady().then(() => {
   // The renderer reports the active tab so cookie-persistence / Chrome import
   // (which use the Electron session.cookies API, not per-webContents CDP) act
   // on the visible tab's partition.
+  ipcMain.handle('auth:diagnostics',async(event,tabId:string):Promise<AuthStatus>=>{
+    if(!mainWindow || mainWindow.isDestroyed() || event.sender!==mainWindow.webContents ||
+       typeof tabId!=='string' || tabId.length>128)throw new Error('인증 진단 권한 없음')
+    const ses=session.fromPartition(partitionForTab(tabId))
+    const info=ensureAuthDiagnostics(ses)
+    let proxy:AuthStatus['proxy']='unknown'
+    try{proxy=(await ses.resolveProxy('https://auth.openai.com')).toUpperCase()==='DIRECT'?'direct':'proxy'}catch{}
+    return {...info,proxy,failures:[...info.failures]}
+  })
+
   // Repair only transient cache in the active browsing profile. Preserve
   // credentials, cookies, saved passwords, and browser storage.
   ipcMain.handle('auth:retry-openai', async (event, tabId: string) => {
