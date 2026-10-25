@@ -36,12 +36,19 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   }
 })()`
 
-export function chatWatchPrepareScript(prompt: string, expectedUrl: string): string {
+export function chatWatchPrepareScript(
+  prompt: string, expectedUrl: string, operationId: string, deadlineAt: number
+): string {
   // Only user-configured prompt text is injected; JSON.stringify prevents
   // remote page/script interpolation and is not evaluated as source.
   return String.raw`(async () => {
     const message = ${JSON.stringify(prompt)}
     const expected = new URL(${JSON.stringify(expectedUrl)})
+    const operationId = ${JSON.stringify(operationId)}
+    const deadline = ${JSON.stringify(deadlineAt)}
+    if (!operationId || !Number.isFinite(deadline) || Date.now() > deadline) {
+      return { prepared: false, reason: 'expired-prepare-command' }
+    }
     if (location.origin !== expected.origin ||
         location.pathname.replace(/\/$/, '') !== expected.pathname.replace(/\/$/, '')) {
       return { prepared: false, reason: 'conversation-url-changed' }
@@ -71,18 +78,39 @@ export function chatWatchPrepareScript(prompt: string, expectedUrl: string): str
       editor.dispatchEvent(new Event('input', { bubbles: true }))
     } else return { prepared: false, reason: 'unsupported-editor' }
     await new Promise(resolve => setTimeout(resolve, 350))
+    if (Date.now() > deadline) return { prepared: false, reason: 'expired-prepare-command' }
+    if (location.origin !== expected.origin ||
+        location.pathname.replace(/\/$/, '') !== expected.pathname.replace(/\/$/, '')) {
+      return { prepared: false, reason: 'conversation-url-changed' }
+    }
     const actual = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (actual !== message.trim()) return { prepared: false, reason: 'draft-verification-failed' }
+    const finalMessages = document.querySelectorAll('[data-message-author-role]')
+    if (!finalMessages.length ||
+        finalMessages[finalMessages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+      return { prepared: false, reason: 'conversation-changed-during-prepare' }
+    }
+    // A per-attempt identifier protects against an unrelated identical draft.
+    // If React replaces the editor, the marker is absent and Send fails closed.
+    editor.setAttribute('data-nightnova-draft-token', operationId)
     // Preparation never clicks Send; main process must recheck user intervention.
     return { prepared: true, reason: 'verified-draft' }
   })()`
 }
 
 // Phase 2: a synchronous, last-moment state check and one Send click.
-export function chatWatchCommitScript(prompt: string, expectedUrl: string): string {
+export function chatWatchCommitScript(
+  prompt: string, expectedUrl: string, operationId: string, deadlineAt: number,
+  expectedAssistantCount: number, expectedUserCount: number, expectedAssistantText: string
+): string {
   return String.raw`(() => {
     const message = ${JSON.stringify(prompt)}
     const expected = new URL(${JSON.stringify(expectedUrl)})
+    const operationId = ${JSON.stringify(operationId)}
+    const deadline = ${JSON.stringify(deadlineAt)}
+    if (!operationId || !Number.isFinite(deadline) || Date.now() > deadline) {
+      return { clicked: false, reason: 'expired-send-command' }
+    }
     if (location.origin !== expected.origin ||
         location.pathname.replace(/\/$/, '') !== expected.pathname.replace(/\/$/, '')) {
       return { clicked: false, reason: 'conversation-url-changed' }
@@ -93,7 +121,27 @@ export function chatWatchCommitScript(prompt: string, expectedUrl: string): stri
     if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
       return { clicked: false, reason: 'conversation-changed' }
     }
+    if (messages.length !== ${JSON.stringify(expectedAssistantCount + expectedUserCount)}) {
+      return { clicked: false, reason: 'conversation-message-count-changed' }
+    }
+    const assistant = Array.from(messages).filter(node =>
+      node.getAttribute('data-message-author-role') === 'assistant')
+    const users = Array.from(messages).filter(node =>
+      node.getAttribute('data-message-author-role') === 'user')
+    if (assistant.length !== ${JSON.stringify(expectedAssistantCount)} ||
+        users.length !== ${JSON.stringify(expectedUserCount)}) {
+      return { clicked: false, reason: 'conversation-role-count-changed' }
+    }
+    const lastAssistant = assistant[assistant.length - 1]
+    if (!lastAssistant ||
+        String(lastAssistant.innerText || lastAssistant.textContent || '').slice(-4000) !==
+          ${JSON.stringify(expectedAssistantText.slice(-4000))}) {
+      return { clicked: false, reason: 'assistant-response-changed' }
+    }
     if (!editor || (stop && !stop.disabled)) return { clicked: false, reason: 'busy-or-missing-editor' }
+    if (editor.getAttribute('data-nightnova-draft-token') !== operationId) {
+      return { clicked: false, reason: 'unverified-draft-origin' }
+    }
     if (String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim() !== message.trim()) {
       return { clicked: false, reason: 'draft-changed-before-send' }
     }
@@ -101,6 +149,11 @@ export function chatWatchCommitScript(prompt: string, expectedUrl: string): stri
     if (!send || send.disabled || !(send.offsetWidth || send.getClientRects().length)) {
       return { clicked: false, reason: 'send-button-unavailable' }
     }
+    if (Date.now() > deadline || !editor.isConnected || !send.isConnected) {
+      return { clicked: false, reason: 'expired-or-detached-send-control' }
+    }
+    // Invalidate the proof BEFORE the irreversible click. One-click budget.
+    editor.removeAttribute('data-nightnova-draft-token')
     send.click()
     return { clicked: true, reason: 'send-clicked' }
   })()`

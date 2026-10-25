@@ -94,11 +94,14 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     const wv = wvRef.current
     if (!wv) return
     let attached = false
+    let attaching = false
+    let cancelled = false
+    let navigationEpoch = 0
     // tryAttach 성공 시 실제 id를 저장해 cleanup에서 올바르게 detach
     let attachedId: number | null = null
 
     const tryAttach = async () => {
-      if (attached) return
+      if (cancelled || attached || attaching) return
       let id: number
       try {
         id = wv.getWebContentsId()
@@ -106,13 +109,26 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
         return
       }
       if (!id || id <= 0) return
-      if (isOpenAiAuthenticationFlowUrl(wv.getURL())) return
-      const ok = await window.rev.cdp.attach(id)
-      if (ok) {
+      if (isOpenAiAuthenticationFlowUrl(wv.getURL())) {
+        // DOM readiness and webContents discovery do not require CDP.
+        updateTab(tab.id, { webContentsId: id })
+        return
+      }
+      attaching = true
+      const epoch = navigationEpoch
+      try {
+        const ok = await window.rev.cdp.attach(id)
+        if (!ok) return
+        if (cancelled || epoch !== navigationEpoch || isOpenAiAuthenticationFlowUrl(wv.getURL())) {
+          await window.rev.cdp.detach(id)
+          return
+        }
         attached = true
         attachedId = id
         updateTab(tab.id, { webContentsId: id })
         void applyTheme()
+      } finally {
+        attaching = false
       }
     }
 
@@ -131,6 +147,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     }
 
     const onNavigate = (e: Electron.DidNavigateEvent) => {
+      navigationEpoch++
       // Auth pages should not remain debugger-attached after navigation.
       if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
         const id = attachedId
@@ -146,6 +163,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     }
     const onNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       if (!e.isMainFrame) return
+      navigationEpoch++
       if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
         const id = attachedId
         attachedId = null
@@ -166,6 +184,7 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     }
 
     const onDomReady = () => {
+      void tryAttach()
       void applyTheme()
     }
 
@@ -198,6 +217,8 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     wv.addEventListener('page-title-updated', onTitle)
 
     return () => {
+      cancelled = true
+      navigationEpoch++
       wv.removeEventListener('dom-ready', tryAttach)
       wv.removeEventListener('dom-ready', onDomReady)
       wv.removeEventListener('did-attach', tryAttach)

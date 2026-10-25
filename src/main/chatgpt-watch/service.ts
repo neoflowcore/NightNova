@@ -424,7 +424,11 @@ export class ChatGptConversationWatch {
         !fresh.online || !fresh.composerReady) return
 
     const prompt = this.stateData.config.resumePrompt
-    const prepared = await withDomTimeout(wc.executeJavaScript(chatWatchPrepareScript(prompt, expected.url), true)) as
+    const operationId = randomUUID()
+    // A queued browser script cannot be allowed to click many seconds later.
+    const prepareDeadline = Date.now() + 3_000
+    const prepared = await withDomTimeout(wc.executeJavaScript(
+      chatWatchPrepareScript(prompt, expected.url, operationId, prepareDeadline), true)) as
       { prepared?: boolean; reason?: string } | null
     if (!this.isArmed(epoch, wc.id)) return
     if (!prepared?.prepared) {
@@ -445,7 +449,11 @@ export class ChatGptConversationWatch {
     this.addLog('action', '재개 프롬프트 전송 시도 #' + this.stateData.attemptCount)
     await this.persist()
     if (!this.isArmed(epoch, wc.id)) return
-    const outcome = await withDomTimeout(wc.executeJavaScript(chatWatchCommitScript(prompt, expected.url), true)) as
+    const commitDeadline = Date.now() + 2_000
+    const outcome = await withDomTimeout(wc.executeJavaScript(chatWatchCommitScript(
+      prompt, expected.url, operationId, commitDeadline,
+      expected.assistantCount, expected.userCount, expected.lastAssistantText
+    ), true)) as
       { clicked?: boolean; reason?: string } | null
     if (!outcome?.clicked) {
       if (this.epoch === epoch && this.stateData.status === 'watching') {
