@@ -133,7 +133,13 @@ export class ChatGptWatchHub {
     const key = createHash('sha256').update(new URL(url).origin + new URL(url).pathname).digest('hex').slice(0, 24)
     const watch = new ChatGptConversationWatch(
       this.mainWindow, () => this.notify(), 'conversation-' + key,
-      (webContentsId) => this.visibleTabId === webContentsId
+      (webContentsId) => {
+        const win = this.mainWindow()
+        // Do not auto-submit in minimized or hidden windows: the operator
+        // must be able to observe the real Chromium tab when it acts.
+        return this.visibleTabId === webContentsId &&
+          !!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()
+      }
     )
     this.slots.set(id, { url, watch })
     // Closing a tab must release a supervision slot, not leave it consuming

@@ -899,6 +899,13 @@ function App() {
             <AgentModeTab label={t('agent.terminal')} active={agentMode === 'cli'} onClick={() => setAgentMode('cli')} />
             <AgentModeTab label="자동개발" active={agentMode === 'nightnova'} onClick={() => setAgentMode('nightnova')} />
             <AgentModeTab label="ChatGPT 감독" active={agentMode === 'watch'} onClick={() => setAgentMode('watch')} />
+            {watchDashboard?.sessions.some(s => s.snapshot.status === 'watching') && (
+              <button type="button" style={{ marginLeft: 'auto', color: 'var(--status-error)', fontSize: 11 }}
+                title="감독 중인 모든 대화를 즉시 중단"
+                onClick={() => { void window.rev.chatWatch.stopAll().catch(() => {}) }}>
+                ■ 전체 긴급 중단
+              </button>
+            )}
           </div>
           {/* Keep ChatPanel mounted (preserves ACP session) but hidden in CLI
               mode; mount the terminal only while selected so the PTY is killed

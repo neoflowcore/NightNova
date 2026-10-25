@@ -392,9 +392,11 @@ export class ChatGptConversationWatch {
       return
     }
     const reviewed = await this.inspectGuest(this.activeGuest())
-    if (!this.isArmed(epoch, wc.id) || !reviewed.hasDraft ||
-        reviewed.lastMessageRole !== 'assistant' || reviewed.generating ||
-        reviewed.userCount !== expected.userCount ||
+    // Pause/Stop wins over an in-flight read; never transition a stopped tab
+    // back to needs-human when the operator has already stopped it.
+    if (!this.isArmed(epoch, wc.id)) return
+    if (!reviewed.hasDraft || reviewed.lastMessageRole !== 'assistant' ||
+        reviewed.generating || reviewed.userCount !== expected.userCount ||
         fingerprint(reviewed) !== fingerprint(expected)) {
       await this.humanGate('전송 직전 대화 상태가 변경되었습니다. 작성된 초안을 확인하세요.')
       return
@@ -411,12 +413,26 @@ export class ChatGptConversationWatch {
       }
       return
     }
-    this.stateData.awaitingResponse = true
-    // The browser may already have clicked while Pause was being pressed:
-    // record the outcome, never issue a second click.
-    await new Promise((resolve) => setTimeout(resolve, 1200))
-    const confirmation = await this.inspectGuest(wc)
-    if (confirmation.userCount <= expected.userCount) {
+    // Do not restore automation that the operator paused or stopped while
+    // the browser was processing the irreversible click.
+    if (this.epoch === epoch && this.stateData.status === 'watching') {
+      this.stateData.awaitingResponse = true
+    }
+    // Allow a small bounded DOM-render delay; all these reads are read-only.
+    // A missing confirmation must NEVER cause another Send click.
+    let confirmation: ChatWatchDomObservation | null = null
+    for (let read = 0; read < 3; read++) {
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      confirmation = await this.inspectGuest(wc)
+      if (!sameConversation(confirmation.url, expected.url)) {
+        if (this.epoch === epoch && this.stateData.status === 'watching') {
+          await this.humanGate('전송 중 ChatGPT 대화가 다른 주소로 이동했습니다.')
+        }
+        return
+      }
+      if (confirmation.userCount > expected.userCount) break
+    }
+    if (!confirmation || confirmation.userCount <= expected.userCount) {
       if (this.epoch === epoch && this.stateData.status === 'watching') {
         await this.humanGate('전송 버튼은 눌렀지만 새 메시지를 확인하지 못했습니다. 중복 전송 방지로 멈춥니다.')
       } else {

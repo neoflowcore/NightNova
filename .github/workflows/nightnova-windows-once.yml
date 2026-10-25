@@ -1,5 +1,5 @@
-name: Nightnova Windows One-Shot
-# Release gate revision 7: consolidated v2.1 safety, observability, and user-configured timing.
+name: NightNova Windows One-Shot
+# Release gate revision 8: final v2.1 release candidate, action economy, single Windows build.
 on:
   push:
     branches:
@@ -62,9 +62,9 @@ jobs:
       - name: Upload one Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Nightnova-Windows-x64-Installer
+          name: NightNova-Windows-x64-Installer
           path: |
-            release/Nightnova-*-setup.exe
+            release/NightNova-*-setup.exe
             release/NIGHTNOVA_RELEASE_MANIFEST.json
           if-no-files-found: error
           retention-days: 1

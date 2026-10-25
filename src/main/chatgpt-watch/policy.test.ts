@@ -50,6 +50,12 @@ describe('ChatGPT supervisor configurable stop categories', () => {
     expect(isChatGptConversation('http://chatgpt.com/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
     expect(isChatGptConversation('https://chatgpt.com.evil.test/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
   })
+  it('does not resume with a user draft, offline session, or missing composer', () => {
+    const ready = { ...base, lastMessageRole: 'assistant' as const }
+    expect(decideChatWatch({ ...ready, hasDraft: true }, context).type).toBe('needs-human')
+    expect(decideChatWatch({ ...ready, online: false }, context).type).toBe('wait')
+    expect(decideChatWatch({ ...ready, composerReady: false }, context).type).toBe('needs-human')
+  })
   it('does not send another prompt while generation is ongoing', () => {
     expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 20_000 }).type)
       .toBe('wait')

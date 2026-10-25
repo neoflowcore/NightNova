@@ -79,7 +79,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       const snap = state.sessions.find(s => s.webContentsId === id)?.snapshot
       return <div className="nightnova-task" key={t.id}>
         <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''}</strong>
-        <p>{snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}회</p>
+        <p>{snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
@@ -100,6 +100,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.stopAll())}>모두 종료</button>
     </div>
     <h4>현재 선택한 탭 설정</h4>
+    <p className="nightnova-wb-note">현재 선택된 브라우저 탭에 설정이 적용됩니다. 여러 탭을 관리할 때는 먼저 상단 탭을 선택하세요.</p>
     {!config ? <p className="nightnova-wb-note">이 탭에서 설정 준비를 누르면 감독 시작 전에 시간과 재개 프롬프트를 편집할 수 있습니다.</p> : <>
       {timeField('자동 재개 판단 간격', 'resume-' + webContentsId, config.intervalSeconds, 'resume',
         value => configure({intervalSeconds:value}), active)}
