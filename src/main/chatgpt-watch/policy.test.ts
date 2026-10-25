@@ -42,6 +42,9 @@ describe('ChatGPT supervisor configurable stop categories', () => {
   it('always gates explicit payment requests', () => {
     expect(decideChatWatch({ ...base, lastAssistantText: '결제 승인이 필요합니다.' }, { ...context, stopOn: { ...defaultStops, payment: false } }).type).toBe('needs-human')
   })
+  it('fails closed if the latest message role cannot be verified', () => {
+    expect(decideChatWatch({ ...base, lastMessageRole: 'unknown' }, context).type).toBe('needs-human')
+  })
   it('does not send another prompt while generation is ongoing', () => {
     expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 20_000 }).type)
       .toBe('wait')

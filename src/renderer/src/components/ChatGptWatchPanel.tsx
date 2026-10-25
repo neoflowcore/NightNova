@@ -84,6 +84,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
         <div className="nightnova-wb-line">
+          <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.configure(id, {}))}>설정 준비</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id))}>시작</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
           <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.inspect(id))}>상태 확인</button>
@@ -96,7 +97,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.stopAll())}>모두 종료</button>
     </div>
     <h4>현재 선택한 탭 설정</h4>
-    {!config ? <p className="nightnova-wb-note">먼저 이 탭에서 감독 시작을 눌러주세요.</p> : <>
+    {!config ? <p className="nightnova-wb-note">이 탭에서 설정 준비를 누르면 감독 시작 전에 시간과 재개 프롬프트를 편집할 수 있습니다.</p> : <>
       {timeField('자동 재개 판단 간격', 'resume-' + webContentsId, config.intervalSeconds, 'resume',
         value => configure({intervalSeconds:value}), active)}
       {timeField('상태 점검 간격', 'check-' + webContentsId, config.checkIntervalSeconds, 'check',

@@ -36,27 +36,27 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   }
 })()`
 
-export function chatWatchSubmitScript(prompt: string): string {
+export function chatWatchPrepareScript(prompt: string): string {
   // Only user-configured prompt text is injected; JSON.stringify prevents
   // remote page/script interpolation and is not evaluated as source.
   return String.raw`(async () => {
     const message = ${JSON.stringify(prompt)}
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
-    if (!editor || (stop && !stop.disabled)) return { clicked: false, reason: 'busy-or-missing-editor' }
+    if (!editor || (stop && !stop.disabled)) return { prepared: false, reason: 'busy-or-missing-editor' }
     const messages = document.querySelectorAll('[data-message-author-role]')
-    if (messages.length && messages[messages.length - 1].getAttribute('data-message-author-role') === 'user') {
-      return { clicked: false, reason: 'unanswered-user-message' }
+    if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+      return { prepared: false, reason: 'no-completed-assistant-response' }
     }
     const current = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
-    if (current) return { clicked: false, reason: 'existing-user-draft' }
+    if (current) return { prepared: false, reason: 'existing-user-draft' }
     editor.focus()
     if (editor.isContentEditable) {
       // React/ProseMirror uses beforeinput rather than a plain textContent
       // assignment. execCommand(insertText) is still supported by Chromium's
       // editing engine and produces user-style input events.
       if (!document.execCommand('insertText', false, message)) {
-        return { clicked: false, reason: 'editor-insertion-refused' }
+        return { prepared: false, reason: 'editor-insertion-refused' }
       }
     } else if (typeof editor.value === 'string') {
       const descriptor = Object.getOwnPropertyDescriptor(
@@ -64,10 +64,29 @@ export function chatWatchSubmitScript(prompt: string): string {
       )
       descriptor?.set?.call(editor, message)
       editor.dispatchEvent(new Event('input', { bubbles: true }))
-    } else return { clicked: false, reason: 'unsupported-editor' }
+    } else return { prepared: false, reason: 'unsupported-editor' }
     await new Promise(resolve => setTimeout(resolve, 350))
     const actual = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
-    if (actual !== message.trim()) return { clicked: false, reason: 'draft-verification-failed' }
+    if (actual !== message.trim()) return { prepared: false, reason: 'draft-verification-failed' }
+    // Preparation never clicks Send; main process must recheck user intervention.
+    return { prepared: true, reason: 'verified-draft' }
+  })()`
+}
+
+// Phase 2: a synchronous, last-moment state check and one Send click.
+export function chatWatchCommitScript(prompt: string): string {
+  return String.raw`(() => {
+    const message = ${JSON.stringify(prompt)}
+    const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
+    const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
+    const messages = document.querySelectorAll('[data-message-author-role]')
+    if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+      return { clicked: false, reason: 'conversation-changed' }
+    }
+    if (!editor || (stop && !stop.disabled)) return { clicked: false, reason: 'busy-or-missing-editor' }
+    if (String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim() !== message.trim()) {
+      return { clicked: false, reason: 'draft-changed-before-send' }
+    }
     const send = document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="Send message"], button[aria-label="메시지 보내기"]')
     if (!send || send.disabled || !(send.offsetWidth || send.getClientRects().length)) {
       return { clicked: false, reason: 'send-button-unavailable' }

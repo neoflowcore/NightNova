@@ -7,9 +7,15 @@ import {
   type ChatWatchConfig, type ChatWatchDomObservation, type ChatWatchSnapshot
 } from '../../shared/chatgpt-watch'
 import { isChatGptConversation, sameConversation, decideChatWatch } from './policy'
-import { CHAT_WATCH_INSPECT_SCRIPT, chatWatchSubmitScript } from './dom'
+import { CHAT_WATCH_INSPECT_SCRIPT, chatWatchPrepareScript, chatWatchCommitScript } from './dom'
 
 const MAX_INSPECT_TEXT = 4000
+function assertMaxAutoMessages(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 24) {
+    throw new Error('자동 재개 횟수는 1~24의 정수여야 합니다.')
+  }
+  return value
+}
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 
@@ -91,8 +97,8 @@ export class ChatGptConversationWatch {
       checkIntervalSeconds: assertChatWatchSeconds(
         patch.checkIntervalSeconds ?? current.checkIntervalSeconds, 'check'
       ),
-      maxAutoMessages: typeof patch.maxAutoMessages === 'number' && Number.isFinite(patch.maxAutoMessages)
-        ? Math.max(1, Math.min(24, Math.floor(patch.maxAutoMessages))) : current.maxAutoMessages,
+      maxAutoMessages: patch.maxAutoMessages === undefined ? current.maxAutoMessages :
+        assertMaxAutoMessages(patch.maxAutoMessages),
       resumePrompt: prompt,
       stopOn: {
         login: typeof patch.stopOn?.login === 'boolean'
@@ -162,7 +168,10 @@ export class ChatGptConversationWatch {
     const value = raw as ChatWatchDomObservation
     if (!sameConversation(value.url, guest.getURL())) throw new Error('대화 주소가 읽는 도중 변경됐습니다.')
     if (!Number.isSafeInteger(value.assistantCount) || !Number.isSafeInteger(value.userCount) ||
-        typeof value.lastAssistantText !== 'string') throw new Error('ChatGPT 화면 구조가 변경됐습니다.')
+        typeof value.lastAssistantText !== 'string' ||
+        !['assistant', 'user', 'unknown'].includes(value.lastMessageRole ?? '')) {
+      throw new Error('ChatGPT 화면 구조가 변경됐습니다.')
+    }
     return value
   }
 
@@ -183,7 +192,7 @@ export class ChatGptConversationWatch {
       throw new Error('ChatGPT에서 기존 대화를 열어주세요. 새 대화 홈 화면은 자동화하지 않습니다.')
     }
     const page = await this.inspectGuest(guest)
-    if (!page.assistantCount || page.needsLogin || page.challenge) {
+    if (!page.assistantCount || page.needsLogin || page.challenge || page.lastMessageRole === 'unknown') {
       throw new Error('로그인된 ChatGPT 대화에서 한 번 이상 답변이 오간 다음 감독을 시작하세요.')
     }
     this.stopTimer()
@@ -348,27 +357,39 @@ export class ChatGptConversationWatch {
         fresh.generating || fresh.hasDraft || fresh.needsLogin || fresh.challenge ||
         !fresh.online || !fresh.composerReady) return
 
+    const prompt = this.stateData.config.resumePrompt
+    const prepared = await wc.executeJavaScript(chatWatchPrepareScript(prompt), true) as
+      { prepared?: boolean; reason?: string } | null
+    if (!this.isArmed(epoch, wc.id)) return
+    if (!prepared?.prepared) {
+      await this.humanGate('초안 준비 실패(' + String(prepared?.reason ?? 'unknown') + '). 직접 확인하세요.')
+      return
+    }
+    const reviewed = await this.inspectGuest(this.activeGuest())
+    if (!this.isArmed(epoch, wc.id) || !reviewed.hasDraft ||
+        reviewed.lastMessageRole !== 'assistant' || reviewed.generating ||
+        reviewed.userCount !== expected.userCount ||
+        fingerprint(reviewed) !== fingerprint(expected)) {
+      await this.humanGate('전송 직전 대화 상태가 변경되었습니다. 작성된 초안을 확인하세요.')
+      return
+    }
     this.stateData.attemptCount++
     this.addLog('action', '재개 프롬프트 전송 시도 #' + this.stateData.attemptCount)
-    // A restart stays paused and only the operator's settings are stored.
     await this.persist()
     if (!this.isArmed(epoch, wc.id)) return
-
-    const raw: unknown = await wc.executeJavaScript(
-      chatWatchSubmitScript(this.stateData.config.resumePrompt), true
-    )
-    const outcome = raw as { clicked?: boolean; reason?: string } | null
+    const outcome = await wc.executeJavaScript(chatWatchCommitScript(prompt), true) as
+      { clicked?: boolean; reason?: string } | null
     if (!outcome?.clicked) {
       if (this.epoch === epoch && this.stateData.status === 'watching') {
-        await this.humanGate('전송을 확인하지 못했습니다(' +
-          String(outcome?.reason ?? 'unknown') + '). 자동 재시도하지 않습니다.')
+        await this.humanGate('전송 실패(' + String(outcome?.reason ?? 'unknown') + '). 중복 시도하지 않습니다.')
       }
       return
     }
+    this.stateData.awaitingResponse = true
     // The browser may already have clicked while Pause was being pressed:
     // record the outcome, never issue a second click.
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    const confirmation = await this.inspectGuest(this.activeGuest())
+    const confirmation = await this.inspectGuest(wc)
     if (confirmation.userCount <= expected.userCount) {
       if (this.epoch === epoch && this.stateData.status === 'watching') {
         await this.humanGate('전송 버튼은 눌렀지만 새 메시지를 확인하지 못했습니다. 중복 전송 방지로 멈춥니다.')
