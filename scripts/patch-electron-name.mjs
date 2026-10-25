@@ -9,9 +9,9 @@ if (process.platform === 'darwin') {
     const buddy = '/usr/libexec/PlistBuddy'
     const run = (...args) => execFileSync(buddy, args, { stdio: 'pipe' }).toString().trim()
     try {
-      run('-c', 'Set :CFBundleName Nightnova', plist)
-      try { run('-c', 'Set :CFBundleDisplayName Nightnova', plist) }
-      catch { run('-c', 'Add :CFBundleDisplayName string Nightnova', plist) }
+      run('-c', 'Set :CFBundleName NightNova', plist)
+      try { run('-c', 'Set :CFBundleDisplayName NightNova', plist) }
+      catch { run('-c', 'Add :CFBundleDisplayName string NightNova', plist) }
       try { execFileSync('codesign', ['--force', '--sign', '-', app], { stdio: 'ignore' }) }
       catch { /* do not block dependency install when dev signing is unavailable */ }
     } catch (error) {

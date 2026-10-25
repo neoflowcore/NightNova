@@ -25,6 +25,8 @@ export class ChatGptWatchHub {
   private rotation: ChatWatchRotation = { ...DEFAULT_CHAT_WATCH_ROTATION }
   private visibleTabId: number | null = null
   private issues: string[] = []
+  /** Cancels a queued multi-tab start before it can arm another tab. */
+  private batchEpoch = 0
   private initializePromise: Promise<void> | null = null
   private savePromise: Promise<void> = Promise.resolve()
 
@@ -177,10 +179,13 @@ export class ChatGptWatchHub {
       throw new Error('최대 8개의 유효한 ChatGPT 탭을 선택하세요.')
     }
     const errors: string[] = []
+    const epoch = ++this.batchEpoch
     for (const id of new Set(ids)) {
+      if (epoch !== this.batchEpoch) break
       try { await this.start(id) }
       catch (error) { errors.push('탭 ' + id + ': ' + String(error instanceof Error ? error.message : error)) }
     }
+    if (epoch !== this.batchEpoch) return this.state()
     this.issues = errors
     this.notify()
     return this.state()
@@ -215,20 +220,27 @@ export class ChatGptWatchHub {
   }
 
   async pauseAll(): Promise<ChatWatchDashboard> {
-    for (const watch of this.slots.values()) {
-      if (watch.watch.state().status === 'watching') await watch.watch.pause()
-    }
+    this.batchEpoch++
+    // Start every pause synchronously before waiting for any disk writes.
+    // This also invalidates starts that are still inspecting the page.
+    const pending = [...this.slots.values()].map(({ watch }) => watch.pause())
     this.notify()
+    await Promise.all(pending)
     return this.state()
   }
 
   async stopAll(): Promise<ChatWatchDashboard> {
-    for (const watch of this.slots.values()) await watch.watch.stop()
+    this.batchEpoch++
+    // The emergency stop must invalidate ALL send epochs immediately;
+    // sequential persistence would leave later tabs armed for too long.
+    const pending = [...this.slots.values()].map(({ watch }) => watch.stop())
     this.notify()
+    await Promise.all(pending)
     return this.state()
   }
 
   close(): void {
+    this.batchEpoch++
     for (const watch of this.slots.values()) watch.watch.close()
     this.visibleTabId = null
   }

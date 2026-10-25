@@ -206,10 +206,12 @@ export class ChatGptConversationWatch {
     }
     const page = await this.inspectGuest(guest)
     // A Stop/Pause or concurrent Start during DOM inspection invalidates this request.
-    if (this.epoch !== requestedEpoch || this.stateData.status === 'watching') {
+    // Epoch alone is sufficient; checking a narrowed status triggers TS2367.
+    if (this.epoch !== requestedEpoch) {
       throw new Error('감독 준비 중 상태가 변경됐습니다. 현재 상태를 다시 확인하세요.')
     }
-    if (!page.assistantCount || page.needsLogin || page.challenge || page.lastMessageRole === 'unknown') {
+    if (!page.assistantCount || page.needsLogin || page.challenge ||
+        page.lastMessageRole !== 'assistant' && page.lastMessageRole !== 'user') {
       throw new Error('로그인된 ChatGPT 대화에서 한 번 이상 답변이 오간 다음 감독을 시작하세요.')
     }
     this.stopTimer()
@@ -238,7 +240,7 @@ export class ChatGptConversationWatch {
     this.timer.unref?.()
     this.addLog('info', 'ChatGPT 대화 감독 시작. 자동 재개 간격: ' +
       this.stateData.config.intervalSeconds + '초. 상태 점검 간격: ' +
-      this.stateData.config.checkIntervalSeconds + '초. 선택된 요청 조건만 중단합니다. 실제 로그인·인증 화면은 반드시 사용자 처리가 필요합니다.')
+      this.stateData.config.checkIntervalSeconds + '초. 결제는 항상 중단하고 로그인·인증은 사용자가 처리합니다.')
     return this.state()
   }
 

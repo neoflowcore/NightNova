@@ -111,7 +111,7 @@ export function NightnovaWorkbench() {
     })
   }
 
-  if (!state) return <div className="nightnova-workbench">Nightnova 개발 작업창 연결 중...</div>
+  if (!state) return <div className="nightnova-workbench">NightNova 개발 작업창 연결 중...</div>
   const active = isNightnovaBusy(state.status)
   const config = state.config
   const percent = nightnovaProgress(state)
@@ -121,7 +121,7 @@ export function NightnovaWorkbench() {
   return (
     <div className="nightnova-workbench">
       <div className="nightnova-wb-head">
-        <strong>☾ ✦ Nightnova 개발 자동화</strong>
+        <strong>☾ ✦ NightNova 개발 자동화</strong>
         <span className="nightnova-state">{state.status}</span>
       </div>
       <div className="nightnova-wb-scroll" data-stable-scroll>

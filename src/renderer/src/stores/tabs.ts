@@ -120,7 +120,7 @@ function persistTabs(state: Pick<TabsState, 'tabs' | 'activeId'>): void {
 const saved = loadSaved()
 const firstId = saved?.activeId ?? newId()
 const initialTabs = saved?.tabs ?? [{
-  id: firstId, url: INITIAL_URL, title: 'Nightnova',
+  id: firstId, url: INITIAL_URL, title: 'NightNova',
   webContentsId: null, initialUrl: INITIAL_URL
 }]
 

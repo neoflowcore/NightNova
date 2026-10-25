@@ -1,5 +1,5 @@
 name: NightNova Windows One-Shot
-# Release gate revision 8: final v2.1 release candidate, action economy, single Windows build.
+# Release gate revision 9: single verified-candidate Windows packaging after TS2367 repair.
 on:
   push:
     branches:

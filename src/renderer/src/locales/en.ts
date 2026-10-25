@@ -273,7 +273,7 @@ export const en = {
 
   'tools.profile.label': 'Tools',
   'tools.profile.browse': 'Browse',
-  'tools.profile.reverse': 'NightNovase',
+  'tools.profile.reverse': 'Reverse engineering',
   'tools.profile.probe': 'Probe',
   'tools.profile.tip.browse': 'Page and DOM tools. API reversing tools are hidden.',
   'tools.profile.tip.reverse': 'Scripts, crypto, replay, and client export.',
