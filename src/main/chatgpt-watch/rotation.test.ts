@@ -64,6 +64,15 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(nextWatchedTabId('t4',['t1','t2','t3'])).toBe('t1')
     expect(nextWatchedTabId('t1',[])).toBeNull()
   })
+  it('defaults to non-sending supervision and independent virtual metrics', () => {
+    const first = createChatWatchSnapshot()
+    const second = createChatWatchSnapshot()
+    expect(first.config.readOnly).toBe(true)
+    expect(first.dryRunReadyCount).toBe(0)
+    expect(first.lastDryRunReadyAt).toBeNull()
+    first.dryRunReadyCount++
+    expect(second.dryRunReadyCount).toBe(0)
+  })
   it('uses independent default stop checkbox objects per conversation', () => {
     const first = createChatWatchSnapshot()
     const second = createChatWatchSnapshot()

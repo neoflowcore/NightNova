@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  createChatWatchSnapshot, assertChatWatchSeconds,
+  createChatWatchSnapshot, assertChatWatchSeconds, mayCommitChatWatchPrompt,
   type ChatWatchConfig, type ChatWatchDomObservation, type ChatWatchSnapshot
 } from '../../shared/chatgpt-watch'
 import { isChatGptConversation, sameConversation, decideChatWatch } from './policy'
@@ -51,6 +51,8 @@ export class ChatGptConversationWatch {
   private assistantKey = ''
   private userCount = 0
   private stableChecks = 0
+  /** Log a read-only eligible Send only once per unchanged assistant response. */
+  private lastDryRunFingerprint = ''
   /** Invalidate in-flight async checks after a Pause, Stop or Restart. */
   private epoch = 0
 
@@ -82,7 +84,12 @@ export class ChatGptConversationWatch {
           // A stop/pause during async disk read must not resurrect a stale
           // state or overwrite a newer operator action.
           if (initializationEpoch !== this.epoch) return
-          if (saved && saved.config) this.stateData.config = this.validateConfig(saved.config)
+          if (saved && saved.config) {
+            this.stateData.config = this.validateConfig(saved.config)
+            // Restoring an old live-mode preference never grants fresh Send
+            // authority on app restart. Operator must opt into live mode again.
+            this.stateData.config.readOnly = true
+          }
           // Never resume automatic web actions after an app restart, even if a
           // session was active when the process crashed.
           this.stateData.status = 'paused'
@@ -231,6 +238,9 @@ export class ChatGptConversationWatch {
     this.stateData.lastCheckAt = Date.now()
     this.stateData.sentCount = 0
     this.stateData.attemptCount = 0
+    this.stateData.dryRunReadyCount = 0
+    this.stateData.lastDryRunReadyAt = null
+    this.lastDryRunFingerprint = ''
     this.stateData.awaitingResponse = page.lastMessageRole === 'user'
     this.stateData.lastDecision = {
       at: Date.now(), type: 'wait', reason: '감독을 시작했습니다. 첫 상태 점검을 기다립니다.'
@@ -331,6 +341,7 @@ export class ChatGptConversationWatch {
       const assistantChanged = key !== this.assistantKey
       const userChanged = page.userCount !== this.userCount
       if (assistantChanged || userChanged) {
+        this.lastDryRunFingerprint = ''
         this.assistantKey = key
         this.userCount = page.userCount
         this.stateData.lastProgressAt = Date.now()
@@ -355,6 +366,13 @@ export class ChatGptConversationWatch {
       })
       this.stateData.lastDecision = { at: Date.now(), type: decision.type, reason: decision.reason }
       if (decision.type === 'send' && this.stateData.config.readOnly) {
+        const dryRunKey = key + ':' + String(page.userCount)
+        if (this.lastDryRunFingerprint !== dryRunKey) {
+          this.lastDryRunFingerprint = dryRunKey
+          this.stateData.dryRunReadyCount++
+          this.stateData.lastDryRunReadyAt = Date.now()
+          this.addLog('info', '모의실행: 자동 전송 조건 충족. 실제 메시지는 보내지 않았습니다.')
+        }
         this.stateData.lastDecision = {
           at: Date.now(), type: 'wait',
           reason: '모의실행: 전송 조건은 충족했지만 메시지는 보내지 않습니다. 실제 전송은 모의실행 설정을 해제한 후에만 가능합니다.'
@@ -380,7 +398,7 @@ export class ChatGptConversationWatch {
         return
       }
       // Hidden tabs are read-only; Pause/Stop invalidates any stale check.
-      if (decision.type === 'send' && !this.stateData.config.readOnly && this.isArmed(epoch, wc.id)) {
+      if (mayCommitChatWatchPrompt(this.stateData.config.readOnly, this.isArmed(epoch, wc.id), decision.type)) {
         await this.sendOnce(wc, page, epoch)
       }
     } catch (error) {

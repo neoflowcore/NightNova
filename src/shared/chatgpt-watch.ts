@@ -174,6 +174,9 @@ export interface ChatWatchSnapshot {
   lastSentAt: number | null
   sentCount: number
   attemptCount: number
+  /** A virtual eligible-send event; no draft or click occurred. */
+  dryRunReadyCount: number
+  lastDryRunReadyAt: number | null
   awaitingResponse: boolean
   /** Ephemeral decision reasoning shown to the operator, never stored with chat text. */
   lastDecision?: { at: number; type: 'wait' | 'send' | 'needs-human' | 'complete'; reason: string }
@@ -209,7 +212,7 @@ export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
   intervalSeconds: 600,
   checkIntervalSeconds: 30,
   maxAutoMessages: 12,
-  readOnly: false,
+  readOnly: true,
   resumePrompt: DEFAULT_CHAT_WATCH_PROMPT,
   stopOn: {
     login: false,
@@ -239,6 +242,8 @@ export function createChatWatchSnapshot(): ChatWatchSnapshot {
     lastSentAt: null,
     sentCount: 0,
     attemptCount: 0,
+    dryRunReadyCount: 0,
+    lastDryRunReadyAt: null,
     awaitingResponse: false,
     reason: null,
     page: null,

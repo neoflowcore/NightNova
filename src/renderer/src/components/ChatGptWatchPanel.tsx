@@ -99,7 +99,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       const snap = state.sessions.find(s => s.webContentsId === id)?.snapshot
       return <div className="nightnova-task" key={t.id}>
         <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''} {id === settingsId ? '· 설정 대상' : ''}</strong>
-        <p>{snap?.config.readOnly ? '[모의실행 · 전송 없음] ' : ''}{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
+        <p>{snap?.config.readOnly ? '[모의실행 · 전송 없음] ' : '[실제 전송 허용] '}{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
+        {snap?.config.readOnly && <p className="nightnova-wb-note">모의실행 전송 조건 충족 {snap.dryRunReadyCount ?? 0}회 · 실제 발송 0회</p>}
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}

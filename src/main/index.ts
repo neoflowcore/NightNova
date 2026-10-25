@@ -223,6 +223,7 @@ function createWindow() {
   // Cmd/Ctrl+1..9. The same handler is attached to webview contents in
   // whenReady so shortcuts work while the page has focus too.
   mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') notifyChatWatchUserActivity()
     if (handleBrowserShortcut(input)) event.preventDefault()
   })
 
