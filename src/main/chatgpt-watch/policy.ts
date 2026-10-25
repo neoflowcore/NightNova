@@ -1,4 +1,4 @@
-import { isSupportedChatGptConversationUrl, type ChatWatchDomObservation, type ChatWatchStopConditions } from '../../shared/chatgpt-watch'
+import { CHAT_WATCH_COMPLETION_MARKER, isSupportedChatGptConversationUrl, type ChatWatchDomObservation, type ChatWatchStopConditions } from '../../shared/chatgpt-watch'
 
 export function isChatGptConversation(url: string): boolean {
   return isSupportedChatGptConversationUrl(url)
@@ -56,6 +56,15 @@ export type WatchDecision =
   | { type: 'wait'; reason: string }
   | { type: 'send'; reason: string }
   | { type: 'needs-human'; reason: string }
+  | { type: 'complete'; reason: string }
+
+/** Only an exact standalone final line is a trustworthy terminal hint. */
+export function hasExplicitChatWatchCompletion(text: string): boolean {
+  const last = text.trimEnd()
+  return last.endsWith(CHAT_WATCH_COMPLETION_MARKER) &&
+    (last === CHAT_WATCH_COMPLETION_MARKER ||
+      last.charAt(last.length - CHAT_WATCH_COMPLETION_MARKER.length - 1) === '\n')
+}
 
 export interface WatchDecisionContext {
   now: number
@@ -111,6 +120,9 @@ export function decideChatWatch(
     return age >= threshold
       ? { type: 'needs-human', reason: '이전 자동 프롬프트의 답변을 확인하지 못했습니다. 중복 전송 방지를 위해 중단합니다.' }
       : { type: 'wait', reason: '직전 자동 프롬프트에 대한 응답을 기다립니다.' }
+  }
+  if (hasExplicitChatWatchCompletion(page.lastAssistantText)) {
+    return { type: 'complete', reason: 'NightNova 완료 신호를 확인했습니다. 감독을 자동 종료합니다.' }
   }
   if (!page.composerReady) {
     return { type: 'needs-human', reason: 'ChatGPT 입력창을 찾을 수 없습니다. 웹페이지 변경 또는 계정 상태 확인이 필요합니다.' }

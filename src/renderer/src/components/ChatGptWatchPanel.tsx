@@ -35,6 +35,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   const active = current?.snapshot.status === 'watching'
   const watching = state.sessions.filter(s => s.snapshot.status === 'watching').length
   const human = state.sessions.filter(s => s.snapshot.status === 'needs-human').length
+  const completed = state.sessions.filter(s => s.snapshot.status === 'completed').length
   const configure = (patch: Partial<ChatWatchConfig>): void => {
     if (!settingsId) return
     void run(() => window.rev.chatWatch.configure(settingsId, patch))
@@ -76,7 +77,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
     <p className="nightnova-wb-note" role="status">
-      감독 중 {watching}개 · 직접 확인 {human}개 · 등록 {state.sessions.length}개 (최대 8개)
+      감독 중 {watching}개 · 완료 {completed}개 · 직접 확인 {human}개 · 등록 {state.sessions.length}개 (최대 8개)
     </p>
     <p className="nightnova-wb-note">감독 중인 ChatGPT 프로젝트를 자동으로 화면에 순환 표시합니다. 사용자가 직접 다른 탭을 선택할 수도 있습니다. 프로젝트마다 진행 상태와 재개 조건은 독립적입니다.</p>
     <div className="nightnova-wb-line">
@@ -97,7 +98,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       const snap = state.sessions.find(s => s.webContentsId === id)?.snapshot
       return <div className="nightnova-task" key={t.id}>
         <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''} {id === settingsId ? '· 설정 대상' : ''}</strong>
-        <p>{snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
+        <p>{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}

@@ -36,11 +36,16 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   }
 })()`
 
-export function chatWatchPrepareScript(prompt: string): string {
+export function chatWatchPrepareScript(prompt: string, expectedUrl: string): string {
   // Only user-configured prompt text is injected; JSON.stringify prevents
   // remote page/script interpolation and is not evaluated as source.
   return String.raw`(async () => {
     const message = ${JSON.stringify(prompt)}
+    const expected = new URL(${JSON.stringify(expectedUrl)})
+    if (location.origin !== expected.origin ||
+        location.pathname.replace(/\/$/, '') !== expected.pathname.replace(/\/$/, '')) {
+      return { prepared: false, reason: 'conversation-url-changed' }
+    }
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     if (!editor || (stop && !stop.disabled)) return { prepared: false, reason: 'busy-or-missing-editor' }
@@ -74,9 +79,14 @@ export function chatWatchPrepareScript(prompt: string): string {
 }
 
 // Phase 2: a synchronous, last-moment state check and one Send click.
-export function chatWatchCommitScript(prompt: string): string {
+export function chatWatchCommitScript(prompt: string, expectedUrl: string): string {
   return String.raw`(() => {
     const message = ${JSON.stringify(prompt)}
+    const expected = new URL(${JSON.stringify(expectedUrl)})
+    if (location.origin !== expected.origin ||
+        location.pathname.replace(/\/$/, '') !== expected.pathname.replace(/\/$/, '')) {
+      return { clicked: false, reason: 'conversation-url-changed' }
+    }
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     const messages = document.querySelectorAll('[data-message-author-role]')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decideChatWatch, detectChatWatchActionRequests, isChatGptConversation } from './policy'
+import { decideChatWatch, detectChatWatchActionRequests, hasExplicitChatWatchCompletion, isChatGptConversation } from './policy'
 import type { ChatWatchDomObservation, ChatWatchStopConditions } from '../../shared/chatgpt-watch'
 
 const base: ChatWatchDomObservation = {
@@ -55,6 +55,17 @@ describe('ChatGPT supervisor configurable stop categories', () => {
     expect(decideChatWatch({ ...ready, hasDraft: true }, context).type).toBe('needs-human')
     expect(decideChatWatch({ ...ready, online: false }, context).type).toBe('wait')
     expect(decideChatWatch({ ...ready, composerReady: false }, context).type).toBe('needs-human')
+  })
+  it('ends supervision only for a standalone final-line marker', () => {
+    expect(hasExplicitChatWatchCompletion('확인 완료.\n[[NIGHTNOVA:COMPLETE]]')).toBe(true)
+    expect(hasExplicitChatWatchCompletion('[[NIGHTNOVA:COMPLETE]] 이어서 진행')).toBe(false)
+    expect(hasExplicitChatWatchCompletion('문서에서 [[NIGHTNOVA:COMPLETE]] 를 설명했습니다.')).toBe(false)
+    expect(decideChatWatch({ ...base, lastAssistantText: '검증 완료.\n[[NIGHTNOVA:COMPLETE]]' }, context).type).toBe('complete')
+  })
+  it('never concludes while the message is still generating or unanswered', () => {
+    const signal = '확인 완료.\n[[NIGHTNOVA:COMPLETE]]'
+    expect(decideChatWatch({ ...base, generating: true, lastAssistantText: signal }, context).type).toBe('wait')
+    expect(decideChatWatch({ ...base, lastMessageRole: 'user', lastAssistantText: signal }, context).type).toBe('needs-human')
   })
   it('does not send another prompt while generation is ongoing', () => {
     expect(decideChatWatch({ ...base, generating: true }, { ...context, now: 20_000 }).type)

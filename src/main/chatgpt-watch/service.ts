@@ -359,6 +359,15 @@ export class ChatGptConversationWatch {
         await this.humanGate(decision.reason)
         return
       }
+      if (decision.type === 'complete') {
+        this.stopTimer()
+        this.stateData.status = 'completed'
+        this.stateData.awaitingResponse = false
+        this.stateData.reason = decision.reason
+        this.addLog('info', decision.reason)
+        await this.persist().catch(() => undefined)
+        return
+      }
       // Hidden tabs are read-only; Pause/Stop invalidates any stale check.
       if (decision.type === 'send' && this.isArmed(epoch, wc.id)) {
         await this.sendOnce(wc, page, epoch)
@@ -386,7 +395,7 @@ export class ChatGptConversationWatch {
         !fresh.online || !fresh.composerReady) return
 
     const prompt = this.stateData.config.resumePrompt
-    const prepared = await wc.executeJavaScript(chatWatchPrepareScript(prompt), true) as
+    const prepared = await withDomTimeout(wc.executeJavaScript(chatWatchPrepareScript(prompt, expected.url), true)) as
       { prepared?: boolean; reason?: string } | null
     if (!this.isArmed(epoch, wc.id)) return
     if (!prepared?.prepared) {
@@ -407,7 +416,7 @@ export class ChatGptConversationWatch {
     this.addLog('action', '재개 프롬프트 전송 시도 #' + this.stateData.attemptCount)
     await this.persist()
     if (!this.isArmed(epoch, wc.id)) return
-    const outcome = await wc.executeJavaScript(chatWatchCommitScript(prompt), true) as
+    const outcome = await withDomTimeout(wc.executeJavaScript(chatWatchCommitScript(prompt, expected.url), true)) as
       { clicked?: boolean; reason?: string } | null
     if (!outcome?.clicked) {
       if (this.epoch === epoch && this.stateData.status === 'watching') {

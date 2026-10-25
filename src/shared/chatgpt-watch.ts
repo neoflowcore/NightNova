@@ -1,7 +1,7 @@
 // NightNova's primary product contract: supervise an existing ChatGPT web
 // conversation. This uses the logged-in browser session, NOT Codex ACP, an
 // OpenAI API key, GitHub local clones or an independent model subscription.
-export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human'
+export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human' | 'completed'
 export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
 /** All durations are stored in whole seconds; UI supports seconds, minutes, hours and days. */
@@ -148,7 +148,7 @@ export interface ChatWatchSnapshot {
   attemptCount: number
   awaitingResponse: boolean
   /** Ephemeral decision reasoning shown to the operator, never stored with chat text. */
-  lastDecision?: { at: number; type: 'wait' | 'send' | 'needs-human'; reason: string }
+  lastDecision?: { at: number; type: 'wait' | 'send' | 'needs-human' | 'complete'; reason: string }
   reason: string | null
   page: ChatWatchPageStatus | null
   logs: ChatWatchLog[]
@@ -162,6 +162,8 @@ export interface ChatWatchDomObservation extends ChatWatchPageStatus {
   alertText: string
 }
 
+export const CHAT_WATCH_COMPLETION_MARKER = '[[NIGHTNOVA:COMPLETE]]' as const
+
 export const DEFAULT_CHAT_WATCH_PROMPT = [
   '앞서 이 대화에서 진행하던 개발 작업을 이어서 진행해.',
   '마지막 작업 상태와 GitHub 반영 내역을 먼저 확인하고, 연결이 끊겼다면 안전하게 복구해.',
@@ -169,7 +171,8 @@ export const DEFAULT_CHAT_WATCH_PROMPT = [
   '불필요한 전체 회귀 검증, 작은 커밋 반복, GitHub Actions 낭비를 피하고 큰 작업 단위로 묶어 진행해.',
   '로그인, 승인, 수기 검증 요청에 대해서는 설정된 중단 조건을 따르되 실제 수행하지 않은 작업을 완료했다고 주장하지 마.',
   '로그인이나 수기 검증이 필요한 부분은 미검증으로 기록하고, 가능한 다른 구현 작업부터 계속해.',
-  '결제, 새로운 권한 부여, 보안 인증을 우회하거나 임의로 수행하지 마. 이미 답변한 질문을 다시 묻지 마.'
+  '결제, 새로운 권한 부여, 보안 인증을 우회하거나 임의로 수행하지 마. 이미 답변한 질문을 다시 묻지 마.',
+  '모든 작업과 필수 검증을 실제로 마친 경우에만 응답 마지막 줄에 [[NIGHTNOVA:COMPLETE]]를 단독으로 기록해. 미완료·미검증 작업이 있으면 절대로 표시하지 마.'
 ].join(' ')
 
 export const DEFAULT_CHAT_WATCH_ROTATION: ChatWatchRotation = { enabled: true, intervalSeconds: 30 }
