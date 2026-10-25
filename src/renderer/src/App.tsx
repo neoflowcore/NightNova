@@ -38,6 +38,7 @@ import { useNightnovaSplitStore, type NightnovaSplitMode } from '@/stores/split-
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
 import { shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
+import { isOfficialOpenAiLoginUrl, OPENAI_LOGIN_ENTRY_URL } from '../../shared/auth-support'
 
 type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
@@ -608,6 +609,17 @@ function App() {
                   </svg>
                 </button>
               </>
+            )}
+            {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
+              <button className="toolbar-btn" type="button"
+                title="OpenAI 로그인 복구: 현재 프로필의 임시 캐시만 정리하고 다시 로그인합니다. 쿠키는 유지됩니다."
+                onClick={() => {
+                  void window.rev.authRecovery.retryOpenAi(activeTab.id).then(() => {
+                    activeRef()?.loadURL(OPENAI_LOGIN_ENTRY_URL)
+                  }).catch(error => console.warn('[NightNova] login retry failed', error))
+                }}>
+                로그인 복구
+              </button>
             )}
             <input
               ref={addressInputRef}

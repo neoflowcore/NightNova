@@ -230,6 +230,9 @@ export interface StoredRequestSummary {
 }
 
 const api = {
+  authRecovery: {
+    retryOpenAi: (tabId: string): Promise<boolean> => ipcRenderer.invoke('auth:retry-openai', tabId)
+  },
   chatWatch: {
     state: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:state'),
     configure: (id: number, patch: Partial<ChatWatchConfig>): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:configure', id, patch),

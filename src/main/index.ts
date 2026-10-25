@@ -892,6 +892,17 @@ app.whenReady().then(() => {
   // The renderer reports the active tab so cookie-persistence / Chrome import
   // (which use the Electron session.cookies API, not per-webContents CDP) act
   // on the visible tab's partition.
+  // Repair only transient cache in the active browsing profile. Preserve
+  // credentials, cookies, saved passwords, and browser storage.
+  ipcMain.handle('auth:retry-openai', async (event, tabId: string) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('NightNova UI에서만 로그인 복구를 실행할 수 있습니다.')
+    }
+    const partition = partitionForTab(tabId)
+    await session.fromPartition(partition).clearCache()
+    return true
+  })
+
   ipcMain.handle('tab:set-active-partition', (_event, tabId: string) => {
     setActivePartition(partitionForTab(tabId))
     return true
