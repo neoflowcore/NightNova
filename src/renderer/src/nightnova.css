@@ -29,6 +29,10 @@
 .nightnova-task { border: 1px solid var(--border); padding: 8px; border-radius: 5px; margin: 8px 0; }
 .nightnova-task strong { color: var(--accent); }
 .nightnova-task p { overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.4; margin: 6px 0; }
+.nightnova-watch-timer { border: 1px solid var(--border); border-radius: 5px; padding: 7px; font-size: 11px; }
+.nightnova-watch-timer-track { height: 5px; background: var(--border); border-radius: 5px; overflow: hidden; margin: 5px 0; }
+.nightnova-watch-timer-track > div { height: 100%; background: var(--accent); transition: width .25s; }
+.nightnova-watch-timer small { color: var(--text-dim); }
 .nightnova-error { color: #ed7373; overflow-wrap: anywhere; }
 .nightnova-log { background: var(--surface); border: 1px solid var(--border); padding: 8px; border-radius: 5px; max-height: 190px; overflow: auto; font-size: 10px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 

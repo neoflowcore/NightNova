@@ -4,7 +4,7 @@
 export type ChatWatchStatus = 'off' | 'watching' | 'paused' | 'needs-human'
 export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
-/** All stored durations are integer SECONDS; UI may express seconds, minutes or hours. */
+/** All durations are stored in whole seconds; UI supports seconds, minutes, hours and days. */
 export type ChatWatchTimeUnit = 'seconds' | 'minutes' | 'hours' | 'days'
 export type ChatWatchTimeKind = 'rotation' | 'check' | 'resume'
 export const CHAT_WATCH_INTERVAL_LIMITS: Record<ChatWatchTimeKind, { min: number; max: number }> = {
@@ -57,6 +57,34 @@ export function isSupportedChatGptConversationUrl(url: string): boolean {
   } catch {
     return false
   }
+}
+
+/** Read-only countdown for the operator. A zero countdown is NOT send authorization. */
+export function chatWatchIdleCountdown(
+  now: number,
+  lastProgressAt: number | null,
+  intervalSeconds: number
+): { elapsedSeconds: number; remainingSeconds: number; progressPercent: number } {
+  if (!Number.isFinite(now) || !Number.isFinite(intervalSeconds) || intervalSeconds <= 0 ||
+      lastProgressAt === null || !Number.isFinite(lastProgressAt)) {
+    return { elapsedSeconds: 0, remainingSeconds: 0, progressPercent: 0 }
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((now - lastProgressAt) / 1000))
+  return {
+    elapsedSeconds,
+    remainingSeconds: Math.max(0, intervalSeconds - elapsedSeconds),
+    progressPercent: Math.min(100, Math.floor(elapsedSeconds * 100 / intervalSeconds))
+  }
+}
+
+/** Display a bounded duration without losing hours on long schedules. */
+export function formatWatchDuration(seconds: number): string {
+  const value = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0))
+  const h = Math.floor(value / 3600)
+  const m = Math.floor(value % 3600 / 60)
+  const s = value % 60
+  return h > 0 ? h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') :
+    String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0')
 }
 
 /** Visible tabs follow the user-facing tab strip order, not watch-start order. */

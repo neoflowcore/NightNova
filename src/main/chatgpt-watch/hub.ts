@@ -166,8 +166,13 @@ export class ChatGptWatchHub {
   }
 
   async start(id: number): Promise<ChatWatchDashboard> {
+    const epoch = this.batchEpoch
     const watch = await this.slot(id)
+    // Stop/Pause can race with the first-time disk-settings load.
+    // Never arm a newly initialized session after such an interruption.
+    if (epoch !== this.batchEpoch) return this.state()
     if (watch.state().status !== 'watching') await watch.start(id)
+    if (epoch !== this.batchEpoch) return this.state()
     this.issues = []
     this.notify()
     return this.state()
@@ -206,6 +211,8 @@ export class ChatGptWatchHub {
   }
 
   async pause(id: number): Promise<ChatWatchDashboard> {
+    // Cancel queued starts (including startMany) before awaiting any disk I/O.
+    this.batchEpoch++
     const watch = this.slots.get(id)?.watch
     if (watch) await watch.pause()
     this.notify()
@@ -213,6 +220,7 @@ export class ChatGptWatchHub {
   }
 
   async stop(id: number): Promise<ChatWatchDashboard> {
+    this.batchEpoch++
     const watch = this.slots.get(id)?.watch
     if (watch) await watch.stop()
     this.notify()

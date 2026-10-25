@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
-import type { Tab } from '@/stores/tabs'
-import { isSupportedChatGptConversationUrl, intervalInputFromSeconds, secondsFromIntervalInput, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
+import { useTabsStore, type Tab } from '@/stores/tabs'
+import { isSupportedChatGptConversationUrl, intervalInputFromSeconds, secondsFromIntervalInput, chatWatchIdleCountdown, formatWatchDuration, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
 
 export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webContentsId: number | null }) {
   const [state, setState] = useState<ChatWatchDashboard | null>(null)
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
+  const [clock, setClock] = useState(() => Date.now())
   const [settingsTab, setSettingsTab] = useState<number | null>(null)
   const [drafts, setDrafts] = useState<Record<number,string>>({})
   const [limitDrafts, setLimitDrafts] = useState<Record<number,string>>({})
   const [intervalEdits, setIntervalEdits] = useState<Record<string, { amount: number; unit: ChatWatchTimeUnit }>>({})
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
   useEffect(() => {
     let mounted = true
     void window.rev.chatWatch.state().then(v => { if (mounted) setState(v) }).catch(e => { if (mounted) setError(String(e)) })
@@ -22,10 +27,14 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }
   if (!state) return <section className="nightnova-wb-section">ChatGPT 감독 연결 중... {error}</section>
   const targets = tabs.filter(t => t.webContentsId && isSupportedChatGptConversationUrl(t.url))
-  const settingsId = settingsTab && targets.some(t => t.webContentsId === settingsTab) ? settingsTab : webContentsId
+  const settingsId = settingsTab && targets.some(t => t.webContentsId === settingsTab)
+    ? settingsTab : targets.some(t => t.webContentsId === webContentsId)
+      ? webContentsId : targets[0]?.webContentsId ?? null
   const current = state.sessions.find(s => s.webContentsId === settingsId)
   const config = current?.snapshot.config
   const active = current?.snapshot.status === 'watching'
+  const watching = state.sessions.filter(s => s.snapshot.status === 'watching').length
+  const human = state.sessions.filter(s => s.snapshot.status === 'needs-human').length
   const configure = (patch: Partial<ChatWatchConfig>): void => {
     if (!settingsId) return
     void run(() => window.rev.chatWatch.configure(settingsId, patch))
@@ -60,8 +69,15 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     ['manualVerification', '수기 검증 요청에서 중단'],
     ['payment', '결제 요청에서 중단']
   ] as const
+  const emergencyStop = (): void => {
+    // Never disable Stop just because another request is saving settings.
+    void window.rev.chatWatch.stopAll().then(setState).catch(e => setError(String(e)))
+  }
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
+    <p className="nightnova-wb-note" role="status">
+      감독 중 {watching}개 · 직접 확인 {human}개 · 등록 {state.sessions.length}개 (최대 8개)
+    </p>
     <p className="nightnova-wb-note">감독 중인 ChatGPT 프로젝트를 자동으로 화면에 순환 표시합니다. 사용자가 직접 다른 탭을 선택할 수도 있습니다. 프로젝트마다 진행 상태와 재개 조건은 독립적입니다.</p>
     <div className="nightnova-wb-line">
       <label className="nightnova-wb-check">
@@ -80,13 +96,23 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       const id = t.webContentsId!
       const snap = state.sessions.find(s => s.webContentsId === id)?.snapshot
       return <div className="nightnova-task" key={t.id}>
-        <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''}</strong>
+        <strong>{t.title || 'ChatGPT'} {id === webContentsId ? '· 보는 중' : ''} {id === settingsId ? '· 설정 대상' : ''}</strong>
         <p>{snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.reason && <p>{snap.reason}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
         {snap?.lastProgressAt && <p className="nightnova-wb-note">마지막 진행: {new Date(snap.lastProgressAt).toLocaleTimeString()} · 최근 검사: {snap.lastCheckAt ? new Date(snap.lastCheckAt).toLocaleTimeString() : '없음'}</p>}
+        {snap?.status === 'watching' && (() => {
+          const countdown = chatWatchIdleCountdown(clock, snap.lastProgressAt, snap.config.intervalSeconds)
+          return <div className="nightnova-watch-timer" aria-label="다음 재개 판단까지 최소 대기">
+            <span>최소 대기 {formatWatchDuration(countdown.remainingSeconds)} · {countdown.progressPercent}%</span>
+            <div className="nightnova-watch-timer-track"><div style={{ width: countdown.progressPercent + '%' }}/></div>
+            <small>시간이 끝나도 AI 생성 중이거나 사용자 입력이 있으면 자동 전송하지 않습니다.</small>
+          </div>
+        })()}
         <div className="nightnova-wb-line">
+          <button type="button" onClick={() => useTabsStore.getState().selectTab(t.id)}>탭 보기</button>
+          <button type="button" onClick={() => setSettingsTab(id)}>설정 선택</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.configure(id, {}))}>설정 준비</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id))}>시작</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
@@ -98,8 +124,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     })}
     <div className="nightnova-wb-line">
       <button disabled={working || !targets.length} onClick={() => void run(() => window.rev.chatWatch.startMany(targets.map(t => t.webContentsId!)))}>모든 대화 감독 시작</button>
-      <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.pauseAll())}>모두 일시정지</button>
-      <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.stopAll())}>모두 종료</button>
+      <button type="button" onClick={() => { void window.rev.chatWatch.pauseAll().then(setState).catch(e => setError(String(e))) }}>모두 일시정지</button>
+      <button type="button" onClick={emergencyStop} title="다른 작업 도중에도 즉시 중단합니다">■ 모두 긴급 종료</button>
     </div>
     <h4>감독 대상별 설정</h4>
     <label>설정 대상
@@ -143,6 +169,24 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     </>}
     {state.errors.map((e,i)=><p className="nightnova-error" key={i}>{e}</p>)}
     {error && <p role="alert" className="nightnova-error">{error}</p>}
+    <button type="button" onClick={() => {
+      const data = {
+        product: 'NightNova', exportedAt: new Date().toISOString(),
+        sessions: state.sessions.map(s => ({
+          tabId: s.webContentsId,
+          status: s.snapshot.status,
+          lastCheckAt: s.snapshot.lastCheckAt,
+          lastProgressAt: s.snapshot.lastProgressAt,
+          sentCount: s.snapshot.sentCount,
+          attemptCount: s.snapshot.attemptCount,
+          lastDecision: s.snapshot.lastDecision,
+          logs: s.snapshot.logs
+        }))
+      }
+      void navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+        .then(() => setError('감독 진단 기록을 클립보드에 복사했습니다. 대화 본문과 로그인 정보는 포함하지 않습니다.'))
+        .catch(e => setError('진단 기록 복사 실패: ' + String(e)))
+    }}>진단 기록 복사 (대화 본문 제외)</button>
     <div className="nightnova-log">{state.sessions.flatMap(s=>s.snapshot.logs.slice(-2).map(l=>({ ...l, id:s.webContentsId }))).slice(-12).map((l,i)=><p key={i}>탭 {l.id} · {new Date(l.at).toLocaleTimeString()} · {l.message}</p>)}</div>
   </section>
 }

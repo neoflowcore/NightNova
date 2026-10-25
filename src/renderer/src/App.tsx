@@ -430,8 +430,16 @@ function App() {
           <TabBar />
         ) : (
           <span style={{ flex: 1, fontSize: 12, opacity: 0.6, marginBottom: 11 }}>
-            Nightnova — External Chrome
+            NightNova — External Chrome
           </span>
+        )}
+        {watchDashboard?.sessions.some(s => s.snapshot.status === 'watching') && (
+          <button type="button" className="toolbar-btn"
+            title="긴급 중단: 모든 자동 감독 중지"
+            style={{ WebkitAppRegion: 'no-drag', marginBottom: 6, color: 'var(--status-error)' } as React.CSSProperties}
+            onClick={() => { void window.rev.chatWatch.stopAll().catch(console.error) }}>
+            ■ 감독 중단
+          </button>
         )}
         <IpBadge refreshSignal={ipRefresh} />
         <button
@@ -708,7 +716,7 @@ function App() {
                 {t('toolbar.external')}
               </button>
             </div>
-            <div role="group" aria-label="Nightnova 분할 화면" style={{ display: 'inline-flex', gap: 2, flexShrink: 0 }}>
+            <div role="group" aria-label="NightNova 분할 화면" style={{ display: 'inline-flex', gap: 2, flexShrink: 0 }}>
               {(['single', 'columns', 'rows'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -734,7 +742,7 @@ function App() {
               <button
                 type="button"
                 className="toolbar-btn"
-                title="Nightnova 자동 개발 작업창 열기"
+                title="NightNova 자동 개발 작업창 열기"
                 onClick={() => { setAgentMode('nightnova'); setChatCollapsed(false) }}
               >
                 자동개발

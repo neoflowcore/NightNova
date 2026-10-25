@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -20,6 +20,18 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(Number.isNaN(secondsFromIntervalInput(1.25, 'seconds'))).toBe(true)
     expect(Number.isNaN(secondsFromIntervalInput(-1, 'hours'))).toBe(true)
     expect(secondsFromIntervalInput(2.5, 'minutes')).toBe(150)
+  })
+  it('computes honest read-only idle countdowns including long schedules', () => {
+    expect(chatWatchIdleCountdown(25_000, 10_000, 30)).toEqual({
+      elapsedSeconds: 15, remainingSeconds: 15, progressPercent: 50
+    })
+    expect(chatWatchIdleCountdown(80_000, 10_000, 30)).toEqual({
+      elapsedSeconds: 70, remainingSeconds: 0, progressPercent: 100
+    })
+    expect(chatWatchIdleCountdown(1_000, null, 30).progressPercent).toBe(0)
+    expect(formatWatchDuration(30)).toBe('00:30')
+    expect(formatWatchDuration(3_661)).toBe('1:01:01')
+    expect(formatWatchDuration(86_400)).toBe('24:00:00')
   })
   it('rotates visible project order without skipping and loops', () => {
     expect(nextWatchedTabId('t1',['t1','t2','t3'])).toBe('t2')
