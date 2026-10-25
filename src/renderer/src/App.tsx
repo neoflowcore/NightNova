@@ -59,6 +59,7 @@ function App() {
   const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
   const [authDiagnostics,setAuthDiagnostics]=useState<AuthStatus|null>(null)
   const [authBusy,setAuthBusy]=useState(false)
+  useEffect(() => {setAuthDiagnostics(null)},[activeTab?.id])
   const lastOperatorActivityAt = useRef(0)
   useEffect(() => {
     const markActivity = (): void => { lastOperatorActivityAt.current = Date.now() }

@@ -5,6 +5,7 @@ import {
   summarizeOpenAiAuthResponse,
   summarizeOpenAiNetworkError,
   isOpenAiAuthenticationFlowUrl,
+  isKnownIdentityProviderUrl,
   appendAuthDiagnostic,
   OPENAI_LOGIN_ENTRY_URL
 } from '../shared/auth-support'
@@ -17,11 +18,27 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
     expect(isOfficialOpenAiLoginUrl('http://auth.openai.com/workspace')).toBe(false)
     expect(isOfficialOpenAiLoginUrl('https://accounts.google.com')).toBe(false)
   })
+  it('recognizes trusted identity provider hosts without wildcard matching', () => {
+    expect(isKnownIdentityProviderUrl('https://accounts.google.com/o/oauth2/v2/auth')).toBe(true)
+    expect(isKnownIdentityProviderUrl('https://appleid.apple.com/auth/authorize')).toBe(true)
+    expect(isKnownIdentityProviderUrl('https://login.microsoftonline.com/common/oauth2')).toBe(true)
+    expect(isKnownIdentityProviderUrl('https://accounts.google.com.evil.test/login')).toBe(false)
+    expect(isKnownIdentityProviderUrl('http://accounts.google.com/login')).toBe(false)
+    expect(isKnownIdentityProviderUrl('https://google.com/login')).toBe(false)
+  })
   it('only grants minimal storage permissions to official OpenAI login origins', () => {
     expect(canGrantOpenAiStorageAccess('storage-access',
       'https://chatgpt.com/auth/login', 'https://auth.openai.com/authorize')).toBe(true)
     expect(canGrantOpenAiStorageAccess('top-level-storage-access',
       'https://auth.openai.com/workspace', 'https://chatgpt.com')).toBe(true)
+    expect(canGrantOpenAiStorageAccess('storage-access',
+      'https://chatgpt.com/auth/login', 'https://accounts.google.com')).toBe(true)
+    expect(canGrantOpenAiStorageAccess('storage-access',
+      'https://accounts.google.com/o/oauth2', 'https://accounts.google.com')).toBe(true)
+    expect(canGrantOpenAiStorageAccess('top-level-storage-access',
+      'https://appleid.apple.com/auth', 'https://auth.openai.com')).toBe(true)
+    expect(canGrantOpenAiStorageAccess('storage-access',
+      'https://chatgpt.com', 'https://accounts.google.com.evil.test')).toBe(false)
     expect(canGrantOpenAiStorageAccess('media',
       'https://chatgpt.com', 'https://auth.openai.com')).toBe(false)
     expect(canGrantOpenAiStorageAccess('storage-access',
@@ -42,6 +59,17 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
       issue: 'html-api-response'
     })
     expect(JSON.stringify(event)).not.toMatch(/SECRET|PRIVATE|workspace/)
+  })
+  it('does not retain response bodies, query parameters or request credentials', () => {
+    const record = summarizeOpenAiAuthResponse({
+      url: 'https://auth.openai.com/authorize?code=PRIVATE_TOKEN#frag',
+      statusCode: 502, resourceType: 'xhr', responseHeaders: { 'Content-Type':['text/html'] }
+    }, 10)
+    const value = JSON.stringify(record)
+    expect(value).not.toContain('PRIVATE_TOKEN')
+    expect(value).not.toContain('authorize')
+    expect(value).not.toContain('frag')
+    expect(record?.status).toBe(502)
   })
   it('records failed auth responses without content or request URL', () => {
     expect(summarizeOpenAiAuthResponse({

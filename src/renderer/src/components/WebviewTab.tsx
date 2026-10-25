@@ -131,12 +131,27 @@ export const WebviewTab = forwardRef<WebviewTabHandle, Props>(function WebviewTa
     }
 
     const onNavigate = (e: Electron.DidNavigateEvent) => {
+      // Auth pages should not remain debugger-attached after navigation.
+      if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
+        const id = attachedId
+        attachedId = null
+        attached = false
+        void window.rev.cdp.detach(id)
+      } else if (!isOpenAiAuthenticationFlowUrl(e.url)) {
+        void tryAttach()
+      }
       updateTab(tab.id, { url: e.url })
       pushHistory({ tabId: tab.id, url: e.url, title: '' })
       void applyTheme()
     }
     const onNavigateInPage = (e: Electron.DidNavigateInPageEvent) => {
       if (!e.isMainFrame) return
+      if (attachedId != null && isOpenAiAuthenticationFlowUrl(e.url)) {
+        const id = attachedId
+        attachedId = null
+        attached = false
+        void window.rev.cdp.detach(id)
+      }
       updateTab(tab.id, { url: e.url })
       pushHistory({ tabId: tab.id, url: e.url, title: '' })
       void applyTheme()

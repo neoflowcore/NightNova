@@ -2,7 +2,7 @@
 
 **NightNova** is a local, personal Chromium/Electron AI development browser for Windows-first workflows.
 
-> Status: thinking-macro v2.1 safety source batch. Windows installer, live ChatGPT supervision and Codex ACP have **not** been verified. Source integration is not a release.
+> Status (2026-10-26): earlier Windows installer and focused tests passed on commit `64f749e`, but the subsequent authentication-recovery changes are source-only and have **not** passed the next Windows acceptance gate. Real authenticated ChatGPT supervision remains unverified. Do not treat the latest main source as an accepted release.
 
 ## Included
 
@@ -46,7 +46,7 @@ An ACP agent may have tools that do not request permission; therefore the approv
 
 ## GitHub Actions
 
-No CI workflows were enabled during B1. Run a single consolidated local verification after the functional batch. The full Windows packaging acceptance gate remains outstanding.
+The Windows installer workflow is **manual-only** (`workflow_dispatch`); normal commits and pushes do not run it. EXE/ZIP artifacts must only be generated on the operator's explicit hands-on acceptance request. The latest authentication changes remain unverified by a new Windows build.
 
 ## Thinking macro v2.1 source batch
 

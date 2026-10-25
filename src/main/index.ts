@@ -934,6 +934,9 @@ app.whenReady().then(() => {
     if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
       throw new Error('NightNova UI에서만 로그인 복구를 실행할 수 있습니다.')
     }
+    if (typeof tabId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(tabId)) {
+      throw new Error('유효하지 않은 탭 식별자입니다.')
+    }
     const partition = partitionForTab(tabId)
     await session.fromPartition(partition).clearCache()
     return true

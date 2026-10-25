@@ -4,16 +4,29 @@
  */
 export const OPENAI_LOGIN_ENTRY_URL = 'https://chatgpt.com/auth/login' as const
 
+// Explicit allowlist; never trust *.openai.com or arbitrary *.google.com.
+const IDENTITY_HOSTS = new Set([
+  'accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com'
+])
+
+export function isKnownIdentityProviderUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && IDENTITY_HOSTS.has(url.hostname) && !url.port
+  } catch {
+    return false
+  }
+}
+
 /** Login-only pages whose CDP instrumentation can be safely deferred. */
 export function isOpenAiAuthenticationFlowUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    if (url.protocol !== 'https:') return false
+    if (url.protocol !== 'https:' || url.port) return false
     if (url.hostname === 'auth.openai.com') return true
     if ((url.hostname === 'chatgpt.com' || url.hostname === 'chat.openai.com') &&
         /^\/(?:auth|login)(?:\/|$)/i.test(url.pathname)) return true
-    return ['accounts.google.com', 'appleid.apple.com', 'login.microsoftonline.com']
-      .includes(url.hostname)
+    return isKnownIdentityProviderUrl(value)
   } catch {
     return false
   }
@@ -26,7 +39,7 @@ const LOGIN_HOSTS = new Set([
 export function isOfficialOpenAiLoginUrl(value: string): boolean {
   try {
     const url = new URL(value)
-    return url.protocol === 'https:' && LOGIN_HOSTS.has(url.hostname)
+    return url.protocol === 'https:' && !url.port && LOGIN_HOSTS.has(url.hostname)
   } catch {
     return false
   }
@@ -36,9 +49,17 @@ export function isOfficialOpenAiLoginUrl(value: string): boolean {
 export function canGrantOpenAiStorageAccess(
   permission: string, topLevelUrl: string, requestingUrl: string
 ): boolean {
-  return (permission === 'storage-access' || permission === 'top-level-storage-access') &&
-    isOfficialOpenAiLoginUrl(topLevelUrl) &&
-    isOfficialOpenAiLoginUrl(requestingUrl)
+  if (permission !== 'storage-access' && permission !== 'top-level-storage-access') return false
+  const topOfficial = isOfficialOpenAiLoginUrl(topLevelUrl)
+  const requestOfficial = isOfficialOpenAiLoginUrl(requestingUrl)
+  const topProvider = isKnownIdentityProviderUrl(topLevelUrl)
+  const requestProvider = isKnownIdentityProviderUrl(requestingUrl)
+  // Only OpenAI <-> known identity provider sign-in or a provider's own frame.
+  // No camera, clipboard, notifications, filesystem or generic third-party access.
+  return (topOfficial && (requestOfficial || requestProvider)) ||
+    (topProvider && requestOfficial) ||
+    (topProvider && requestProvider &&
+      new URL(topLevelUrl).hostname === new URL(requestingUrl).hostname)
 }
 
 export interface AuthNetworkDiagnostic {
