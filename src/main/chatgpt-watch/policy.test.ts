@@ -5,7 +5,7 @@ import type { ChatWatchDomObservation, ChatWatchStopConditions } from '../../sha
 const base: ChatWatchDomObservation = {
   url: 'https://chatgpt.com/c/12345678-abcd-1234-efab-123456789012',
   assistantCount: 5, userCount: 5, generating: false, online: true,
-  composerReady: true, hasDraft: false, needsLogin: false, challenge: false,
+  composerReady: true, hasDraft: false, lastMessageRole: 'assistant', needsLogin: false, challenge: false,
   alertText: '', lastAssistantText: '수기 검증이 필요합니다. 직접 확인해 주세요.'
 }
 const defaultStops: ChatWatchStopConditions = {
