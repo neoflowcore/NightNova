@@ -1,13 +1,7 @@
 name: NightNova Windows Manual Acceptance
-# TEMPORARY ONE-SHOT ACCEPTANCE BRANCH ONLY, explicitly requested by operator.
-# Main is manual-only; source pushes to main never trigger packaging.
-# Restore workflow_dispatch-only on this branch after this one requested build.
+# ACTION ECONOMY STRICT: never run on a push. Generate EXE/artifact ONLY
+# when the operator explicitly requests an installer or hands-on acceptance.
 on:
-  push:
-    branches:
-      - nightnova-acceptance-20261026-one-shot
-    paths:
-      - .github/workflows/nightnova-windows-once.yml
   workflow_dispatch:
 
 permissions:
