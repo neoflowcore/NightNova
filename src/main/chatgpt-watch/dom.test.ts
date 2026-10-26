@@ -74,7 +74,8 @@ function mockDom(options: MockDomOptions = {}) {
     },
     URL,
     Date,
-    navigator: { onLine: options.online !== false },
+    // Read the mutable mock state at execution time, not when the context is constructed.
+    navigator: { get onLine() { return options.online !== false } },
     setTimeout: (callback: () => void) => { callback(); return 0 }
   }
   return {
