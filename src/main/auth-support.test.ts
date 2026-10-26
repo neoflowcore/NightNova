@@ -103,7 +103,7 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
     const events = Array.from({length:42},(_,i) => summarizeOpenAiNetworkError({
       url: 'https://auth.openai.com/authorize?token=SECRET' + i, resourceType:'xhr'
     }, i)!).filter(Boolean)
-    const bounded = events.reduce((items, event) => appendAuthDiagnostic(items,event,24), [])
+    const bounded = events.reduce<Array<NonNullable<ReturnType<typeof summarizeOpenAiNetworkError>>>>((items, event) => appendAuthDiagnostic(items, event, 24), [])
     expect(bounded.length).toBe(24)
     expect(bounded[0].at).toBe(18)
     expect(JSON.stringify(bounded)).not.toContain('SECRET')
