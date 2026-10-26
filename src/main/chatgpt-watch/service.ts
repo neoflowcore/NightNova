@@ -47,6 +47,8 @@ export class ChatGptConversationWatch {
   private timer: ReturnType<typeof setInterval> | null = null
   private busy = false
   private starting: Promise<void> | null = null
+  /** Single-flight arming: simultaneous Start clicks cannot create two timers. */
+  private arming: Promise<ChatWatchSnapshot> | null = null
   private saving: Promise<void> = Promise.resolve()
   private assistantKey = ''
   private userCount = 0
@@ -208,7 +210,19 @@ export class ChatGptConversationWatch {
     this.notify()
   }
 
-  async start(id: number): Promise<ChatWatchSnapshot> {
+  start(id: number): Promise<ChatWatchSnapshot> {
+    if (this.arming) return this.arming
+    const attempt = this.startImpl(id)
+    this.arming = attempt
+    // Clear on success *and* failure without creating an unhandled rejection.
+    void attempt.then(
+      () => { if (this.arming === attempt) this.arming = null },
+      () => { if (this.arming === attempt) this.arming = null }
+    )
+    return attempt
+  }
+
+  private async startImpl(id: number): Promise<ChatWatchSnapshot> {
     if (this.stateData.status === 'watching') throw new Error('이미 감독 중입니다.')
     const requestedEpoch = this.epoch
     const guest = this.guest(id)

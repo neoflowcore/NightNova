@@ -615,20 +615,38 @@ function App() {
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
               <button type="button" className="toolbar-btn" title="민감정보를 제외한 로그인 진단"
-                onClick={() => {void window.rev.authRecovery.diagnostics(activeTab.id)
-                  .then(setAuthDiagnostics).catch(console.warn)}}>로그인 진단</button>
+                onClick={() => {
+                  const tabId = activeTab.id
+                  void window.rev.authRecovery.diagnostics(tabId)
+                    .then(info => {
+                      if (useTabsStore.getState().activeId === tabId) setAuthDiagnostics(info)
+                    })
+                    .catch(console.warn)
+                }}>로그인 진단</button>
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && authDiagnostics && (
-              <span role="status">{authDiagnostics.proxy} · 오류 {authDiagnostics.failures.length} · HTTP {authDiagnostics.failures.at(-1)?.status ?? '-'}</span>
+              <span role="status" title="현재 브라우저 프로필의 민감정보 없는 인증 네트워크 상태">
+                {authDiagnostics.proxy === 'proxy' ? '프록시' : authDiagnostics.proxy === 'direct' ? '직접 연결' : '연결 상태 불명'} · 오류 {authDiagnostics.failures.length}건
+                {authDiagnostics.failures.length > 0 && (() => {
+                  const last = authDiagnostics.failures[authDiagnostics.failures.length - 1]
+                  const kind = last.issue === 'html-api-response' ? 'JSON 대신 HTML 응답' :
+                    last.issue === 'network-error' ? '네트워크 오류' : 'HTTP 오류'
+                  return ' · ' + kind + ' (' + last.host + ', ' + last.status + ')'
+                })()}
+              </span>
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
               <button className="toolbar-btn" type="button"
                 title="OpenAI 로그인 복구: 현재 프로필의 임시 캐시만 정리하고 다시 로그인합니다. 쿠키는 유지됩니다."
                 disabled={authBusy}
                 onClick={() => {
+                  const tabId = activeTab.id
                   setAuthBusy(true)
-                  void window.rev.authRecovery.retryOpenAi(activeTab.id).then(() => {
-                    activeRef()?.loadURL(OPENAI_LOGIN_ENTRY_URL)
+                  void window.rev.authRecovery.retryOpenAi(tabId).then(() => {
+                    // A slow cache clear must never navigate the *new* active tab.
+                    const original = useTabsStore.getState().tabs.find(t => t.id === tabId)
+                    if (!original || !isOfficialOpenAiLoginUrl(original.url)) return
+                    tabRefs.current.get(tabId)?.loadURL(OPENAI_LOGIN_ENTRY_URL)
                   }).catch(error => console.warn('[NightNova] login retry failed', error)).finally(()=>setAuthBusy(false))
                 }}>
                 로그인 복구
