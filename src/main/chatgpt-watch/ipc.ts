@@ -11,11 +11,14 @@ export function registerChatGptWatchIpc(
       win.webContents.send('chatwatch:state', state)
     }
   })
-  const access = async (event: Electron.IpcMainInvokeEvent): Promise<void> => {
+  const authorize = (event: Electron.IpcMainInvokeEvent): void => {
     const win = getWindow()
     if (!win || win.isDestroyed() || event.sender !== win.webContents) {
       throw new Error('ChatGPT 감독 IPC는 NightNova 자체 UI에서만 호출할 수 있습니다.')
     }
+  }
+  const access = async (event: Electron.IpcMainInvokeEvent): Promise<void> => {
+    authorize(event)
     await watch.initialize()
   }
   ipcMain.handle('chatwatch:state', async (event) => {
@@ -35,11 +38,11 @@ export function registerChatGptWatchIpc(
     return watch.startMany(ids)
   })
   ipcMain.handle('chatwatch:pause-all', async (event) => {
-    await access(event)
+    authorize(event)
     return watch.pauseAll()
   })
   ipcMain.handle('chatwatch:stop-all', async (event) => {
-    await access(event)
+    authorize(event)
     return watch.stopAll()
   })
   ipcMain.handle('chatwatch:configure', async (event, id: number, patch: Partial<ChatWatchConfig>) => {
@@ -59,11 +62,11 @@ export function registerChatGptWatchIpc(
     return watch.inspect(webContentsId)
   })
   ipcMain.handle('chatwatch:pause', async (event, id: number) => {
-    await access(event)
+    authorize(event)
     return watch.pause(id)
   })
   ipcMain.handle('chatwatch:stop', async (event, id: number) => {
-    await access(event)
+    authorize(event)
     return watch.stop(id)
   })
   void watch.initialize()

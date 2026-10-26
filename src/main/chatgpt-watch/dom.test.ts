@@ -11,6 +11,8 @@ interface MockDomOptions {
   draft?: string
   generating?: boolean
   sendAvailable?: boolean
+  authVisible?: boolean
+  online?: boolean
 }
 
 function mockDom(options: MockDomOptions = {}) {
@@ -48,6 +50,9 @@ function mockDom(options: MockDomOptions = {}) {
       if (selector.includes('#prompt-textarea')) return editor
       if (selector.includes('stop-button')) return options.generating ? stop : null
       if (selector.includes('send-button')) return options.sendAvailable === false ? null : send
+      if (selector.includes('input[type="password"]')) {
+        return options.authVisible ? { offsetWidth: 40, offsetHeight: 20, getClientRects: () => [1] } : null
+      }
       return null
     },
     querySelectorAll: () => [
@@ -69,6 +74,7 @@ function mockDom(options: MockDomOptions = {}) {
     },
     URL,
     Date,
+    navigator: { onLine: options.online !== false },
     setTimeout: (callback: () => void) => { callback(); return 0 }
   }
   return {
@@ -151,6 +157,33 @@ describe('thinking macro DOM send two-stage protocol', () => {
     expect(runInNewContext(commit('resume'),test.context).clicked).toBe(true)
     expect(runInNewContext(commit('resume'),test.context).clicked).toBe(false)
     expect(test.getClicks()).toBe(1)
+  })
+  it('blocks preparation when an authentication challenge is on screen', async () => {
+    const test = mockDom({ authVisible: true })
+    const result = await runInNewContext(prepare('resume'), test.context)
+    expect(result.prepared).toBe(false)
+    expect(result.reason).toBe('authentication-required')
+    expect(test.getClicks()).toBe(0)
+  })
+  it('blocks a click if login appears after a verified draft', async () => {
+    const opts = { authVisible: false }
+    const test = mockDom(opts)
+    expect((await runInNewContext(prepare('resume'), test.context)).prepared).toBe(true)
+    opts.authVisible = true
+    const result = runInNewContext(commit('resume'), test.context)
+    expect(result.clicked).toBe(false)
+    expect(result.reason).toBe('authentication-required')
+    expect(test.getClicks()).toBe(0)
+  })
+  it('never sends after the network goes offline during preparation', async () => {
+    const opts = { online: true }
+    const test = mockDom(opts)
+    await runInNewContext(prepare('resume'), test.context)
+    opts.online = false
+    const result = runInNewContext(commit('resume'), test.context)
+    expect(result.clicked).toBe(false)
+    expect(result.reason).toBe('offline')
+    expect(test.getClicks()).toBe(0)
   })
   it('does not evaluate prompt content as JavaScript', async () => {
     const test = mockDom()

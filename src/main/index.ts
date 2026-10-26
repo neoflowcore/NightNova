@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, session, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, net, session, shell, webContents, type MenuItemConstructorOptions } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +17,7 @@ import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
 import { registerNightnovaIpc } from './nightnova/ipc'
 import { registerChatGptWatchIpc } from './chatgpt-watch/ipc'
-import { canGrantOpenAiStorageAccess, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
+import { canGrantOpenAiStorageAccess, isOfficialOpenAiLoginUrl, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -129,6 +129,24 @@ app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 let mainWindow: BrowserWindow | null = null
 const authDiagnostics=new WeakMap<Electron.Session,AuthStatus>()
+/**
+ * Never infer the login session from a renderer tab string. The selected
+ * Chromium webview is the authority: profile tabs and proxy tabs have their
+ * own Electron.Session, which may not match the shared partition.
+ */
+function authorizedOpenAiGuestSession(sender: Electron.WebContents, guestId: number): Electron.Session {
+  if (!Number.isSafeInteger(guestId) || guestId <= 0) {
+    throw new Error('브라우저 탭이 아직 준비되지 않았습니다.')
+  }
+  const guest = webContents.fromId(guestId)
+  if (!guest || guest.isDestroyed() || guest.getType() !== 'webview' ||
+      guest.hostWebContents?.id !== sender.id ||
+      !isOfficialOpenAiLoginUrl(guest.getURL())) {
+    throw new Error('현재 NightNova의 OpenAI 로그인 탭만 복구할 수 있습니다.')
+  }
+  return guest.session
+}
+
 function ensureAuthDiagnostics(ses:Electron.Session):AuthStatus {
   const previous=authDiagnostics.get(ses)
   if(previous)return previous
@@ -225,6 +243,11 @@ function createWindow() {
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown') notifyChatWatchUserActivity()
     if (handleBrowserShortcut(input)) event.preventDefault()
+  })
+  // Buttons, tab selection and panel clicks are also real operator activity.
+  // Do not permit an autonomous Send while someone is using NightNova's UI.
+  mainWindow.webContents.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type === 'mouseDown') notifyChatWatchUserActivity()
   })
 
   // Right-click in the app UI: text-editing menu only. No Back/Reload here —
@@ -921,27 +944,30 @@ app.whenReady().then(() => {
   // The renderer reports the active tab so cookie-persistence / Chrome import
   // (which use the Electron session.cookies API, not per-webContents CDP) act
   // on the visible tab's partition.
-  ipcMain.handle('auth:diagnostics',async(event,tabId:string):Promise<AuthStatus>=>{
-    if(!mainWindow || mainWindow.isDestroyed() || event.sender!==mainWindow.webContents ||
-       typeof tabId!=='string' || tabId.length>128)throw new Error('인증 진단 권한 없음')
-    const ses=session.fromPartition(partitionForTab(tabId))
-    const info=ensureAuthDiagnostics(ses)
-    let proxy:AuthStatus['proxy']='unknown'
-    try{proxy=(await ses.resolveProxy('https://auth.openai.com')).toUpperCase()==='DIRECT'?'direct':'proxy'}catch{}
-    return {...info,proxy,failures:[...info.failures]}
+  ipcMain.handle('auth:diagnostics', async (event, webContentsId: number): Promise<AuthStatus> => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      throw new Error('NightNova UI에서만 인증 진단을 조회할 수 있습니다.')
+    }
+    const ses = authorizedOpenAiGuestSession(event.sender, webContentsId)
+    const info = ensureAuthDiagnostics(ses)
+    let proxy: AuthStatus['proxy'] = 'unknown'
+    try {
+      const selected = (await ses.resolveProxy('https://auth.openai.com')).toUpperCase()
+      proxy = selected === 'DIRECT' ? 'direct' : 'proxy'
+    } catch { /* Keep unknown when proxy resolution fails. */ }
+    return { ...info, proxy, failures: [...info.failures] }
   })
 
   // Repair only transient cache in the active browsing profile. Preserve
   // credentials, cookies, saved passwords, and browser storage.
-  ipcMain.handle('auth:retry-openai', async (event, tabId: string) => {
+  ipcMain.handle('auth:retry-openai', async (event, webContentsId: number) => {
     if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
       throw new Error('NightNova UI에서만 로그인 복구를 실행할 수 있습니다.')
     }
-    if (typeof tabId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(tabId)) {
-      throw new Error('유효하지 않은 탭 식별자입니다.')
-    }
-    const partition = partitionForTab(tabId)
-    await session.fromPartition(partition).clearCache()
+    const ses = authorizedOpenAiGuestSession(event.sender, webContentsId)
+    // Clear only transient cache of the *actual* webview profile. Preserve
+    // cookies, password manager, web storage and separate profiles.
+    await ses.clearCache()
     return true
   })
 

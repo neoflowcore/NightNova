@@ -56,6 +56,8 @@ function App() {
   const activeId = useTabsStore((s) => s.activeId)
   const addTab = useTabsStore((s) => s.addTab)
   const activeTab = tabs.find((t) => t.id === activeId)
+  const browserMode = useBrowserModeStore((s) => s.mode)
+  const setBrowserMode = useBrowserModeStore((s) => s.setMode)
   const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
   const [authDiagnostics,setAuthDiagnostics]=useState<AuthStatus|null>(null)
   const [authBusy,setAuthBusy]=useState(false)
@@ -74,7 +76,12 @@ function App() {
   }, [])
   useEffect(() => window.rev.chatWatch.onState(setWatchDashboard), [])
   useEffect(() => { void window.rev.chatWatch.state().then(setWatchDashboard).catch(() => {}) }, [])
-  useEffect(() => { void window.rev.chatWatch.visible(activeTab?.webContentsId ?? null).catch(() => {}) }, [activeTab?.webContentsId])
+  useEffect(() => {
+    // Never leave the previously visible tab eligible to auto-Send after a
+    // tab switch or while an external browser mode covers embedded webviews.
+    const visibleId = browserMode === 'embedded' ? activeTab?.webContentsId ?? null : null
+    void window.rev.chatWatch.visible(visibleId).catch(() => {})
+  }, [activeId, activeTab?.webContentsId, browserMode])
   useEffect(() => {
     if (!watchDashboard?.rotation.enabled || watchDashboard.sessions.filter(s => s.snapshot.status === 'watching').length < 2) return
     const interval = setInterval(() => {
@@ -93,9 +100,6 @@ function App() {
     }, watchDashboard.rotation.intervalSeconds * 1000)
     return () => clearInterval(interval)
   }, [watchDashboard?.rotation.enabled, watchDashboard?.rotation.intervalSeconds, watchDashboard?.sessions.map(s=>s.webContentsId+':'+s.snapshot.status).join('|')])
-
-  const browserMode = useBrowserModeStore((s) => s.mode)
-  const setBrowserMode = useBrowserModeStore((s) => s.setMode)
 
   const bookmarks = useBookmarksStore((s) => s.bookmarks)
   const addBookmark = useBookmarksStore((s) => s.add)
@@ -614,14 +618,21 @@ function App() {
               </>
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
-              <button type="button" className="toolbar-btn" title="민감정보를 제외한 로그인 진단"
+              <button type="button" className="toolbar-btn" title="현재 Chromium 로그인 프로필의 안전한 네트워크 진단"
+                disabled={activeTab.webContentsId === null}
                 onClick={() => {
                   const tabId = activeTab.id
-                  void window.rev.authRecovery.diagnostics(tabId)
+                  const guestId = activeTab.webContentsId
+                  if (guestId === null) return
+                  void window.rev.authRecovery.diagnostics(guestId)
                     .then(info => {
-                      if (useTabsStore.getState().activeId === tabId) setAuthDiagnostics(info)
+                      const selected = useTabsStore.getState()
+                      if (selected.activeId === tabId &&
+                          selected.tabs.find(t => t.id === tabId)?.webContentsId === guestId) {
+                        setAuthDiagnostics(info)
+                      }
                     })
-                    .catch(console.warn)
+                    .catch(error => console.warn('[NightNova] safe login diagnostics failed', error))
                 }}>로그인 진단</button>
             )}
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && authDiagnostics && (
@@ -638,16 +649,21 @@ function App() {
             {activeTab && isOfficialOpenAiLoginUrl(activeTab.url) && (
               <button className="toolbar-btn" type="button"
                 title="OpenAI 로그인 복구: 현재 프로필의 임시 캐시만 정리하고 다시 로그인합니다. 쿠키는 유지됩니다."
-                disabled={authBusy}
+                disabled={authBusy || activeTab.webContentsId === null}
                 onClick={() => {
                   const tabId = activeTab.id
+                  const guestId = activeTab.webContentsId
+                  if (guestId === null) return
                   setAuthBusy(true)
-                  void window.rev.authRecovery.retryOpenAi(tabId).then(() => {
-                    // A slow cache clear must never navigate the *new* active tab.
+                  void window.rev.authRecovery.retryOpenAi(guestId).then(() => {
+                    // Cache clearing is asynchronous. Reopen login only in the
+                    // original still-existing tab with the same real webview.
                     const original = useTabsStore.getState().tabs.find(t => t.id === tabId)
-                    if (!original || !isOfficialOpenAiLoginUrl(original.url)) return
+                    if (!original || original.webContentsId !== guestId ||
+                        !isOfficialOpenAiLoginUrl(original.url)) return
                     tabRefs.current.get(tabId)?.loadURL(OPENAI_LOGIN_ENTRY_URL)
-                  }).catch(error => console.warn('[NightNova] login retry failed', error)).finally(()=>setAuthBusy(false))
+                  }).catch(error => console.warn('[NightNova] login retry failed', error))
+                    .finally(() => setAuthBusy(false))
                 }}>
                 로그인 복구
               </button>

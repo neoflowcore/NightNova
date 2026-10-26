@@ -231,8 +231,10 @@ export interface StoredRequestSummary {
 
 const api = {
   authRecovery: {
-    diagnostics: (tabId:string): Promise<import('../shared/auth-support').AuthStatus> => ipcRenderer.invoke('auth:diagnostics',tabId),
-    retryOpenAi: (tabId: string): Promise<boolean> => ipcRenderer.invoke('auth:retry-openai', tabId)
+    diagnostics: (webContentsId: number): Promise<import('../shared/auth-support').AuthStatus> =>
+      ipcRenderer.invoke('auth:diagnostics', webContentsId),
+    retryOpenAi: (webContentsId: number): Promise<boolean> =>
+      ipcRenderer.invoke('auth:retry-openai', webContentsId)
   },
   chatWatch: {
     state: (): Promise<ChatWatchDashboard> => ipcRenderer.invoke('chatwatch:state'),

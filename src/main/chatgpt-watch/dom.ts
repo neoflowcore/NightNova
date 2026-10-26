@@ -60,6 +60,15 @@ export function chatWatchPrepareScript(
     if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
       return { prepared: false, reason: 'no-completed-assistant-response' }
     }
+    // Authentication/verification and offline transitions always block
+    // preparation. A stale conversation can remain visible while logged out.
+    const challenge = document.querySelector(
+      'input[type="password"], iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha"], #cf-challenge-running'
+    )
+    if (challenge && (challenge.offsetWidth || challenge.offsetHeight || challenge.getClientRects().length)) {
+      return { prepared: false, reason: 'authentication-required' }
+    }
+    if (!navigator.onLine) return { prepared: false, reason: 'offline' }
     const current = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (current) return { prepared: false, reason: 'existing-user-draft' }
     editor.focus()
@@ -139,6 +148,15 @@ export function chatWatchCommitScript(
       return { clicked: false, reason: 'assistant-response-changed' }
     }
     if (!editor || (stop && !stop.disabled)) return { clicked: false, reason: 'busy-or-missing-editor' }
+    // Fail closed if login/challenge appears after draft preparation, or the
+    // network goes offline immediately before the irreversible click.
+    const challenge = document.querySelector(
+      'input[type="password"], iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha"], #cf-challenge-running'
+    )
+    if (challenge && (challenge.offsetWidth || challenge.offsetHeight || challenge.getClientRects().length)) {
+      return { clicked: false, reason: 'authentication-required' }
+    }
+    if (!navigator.onLine) return { clicked: false, reason: 'offline' }
     if (editor.getAttribute('data-nightnova-draft-token') !== operationId) {
       return { clicked: false, reason: 'unverified-draft-origin' }
     }
