@@ -69,7 +69,8 @@ describe('ChatGPT supervisor configurable stop categories', () => {
   it('does not resume with a user draft, offline session, or missing composer', () => {
     const ready = { ...base, lastMessageRole: 'assistant' as const }
     expect(decideChatWatch({ ...ready, hasDraft: true }, context).type).toBe('needs-human')
-    expect(decideChatWatch({ ...ready, online: false }, context).type).toBe('wait')
+    expect(decideChatWatch({ ...ready, online: false }, context).type).toBe('needs-human')
+    expect(decideChatWatch({ ...ready, online: false }, {...context, readOnly:true}).type).toBe('wait')
     expect(decideChatWatch({ ...ready, composerReady: false }, context).type).toBe('needs-human')
   })
   it('ends supervision only for a standalone final-line marker', () => {
