@@ -3,17 +3,30 @@
 // transiently and never fetch cookies, tokens or full chat transcripts.
 export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   const visible = (el) => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-  const nodes = Array.from(document.querySelectorAll('[data-message-author-role]'))
-  const assistantNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'assistant')
-  const userNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'user')
+  const byOriginal = Array.from(document.querySelectorAll('[data-message-author-role]'))
+  const byTurn = byOriginal.length ? [] : Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
+  const nodes = byOriginal.length ? byOriginal : byTurn
+  const roleOf = (el) => {
+    const direct = el.getAttribute('data-message-author-role') ||
+      el.getAttribute('data-author-role') || el.getAttribute('data-role')
+    if (direct === 'assistant' || direct === 'user') return direct
+    const dataId = el.getAttribute('data-testid') || ''
+    if (/conversation-turn-assistant/i.test(dataId)) return 'assistant'
+    if (/conversation-turn-user/i.test(dataId)) return 'user'
+    return 'unknown'
+  }
+  const assistantNodes = nodes.filter(el => roleOf(el) === 'assistant')
+  const userNodes = nodes.filter(el => roleOf(el) === 'user')
   const last = assistantNodes[assistantNodes.length - 1]
   // Ignore transient tool/status wrappers and nodes with no recognized role.
   // The final recognized assistant/user message determines the safe state.
   const lastNode = nodes.filter(el => {
-    const role = el.getAttribute('data-message-author-role')
+    const role = roleOf(el)
     return role === 'assistant' || role === 'user'
   }).at(-1)
-  const lastRole = lastNode?.getAttribute('data-message-author-role')
+  const lastRole = lastNode ? roleOf(lastNode) : 'unknown'
+  const roleSource = byOriginal.length ? 'message-author-role' :
+    byTurn.length ? 'turn-role' : 'unknown'
   const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
   const draftText = editor ? (editor.value ?? editor.innerText ?? editor.textContent ?? '') : ''
   const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
@@ -27,6 +40,7 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     assistantCount: assistantNodes.length,
     userCount: userNodes.length,
     lastMessageRole: lastRole === 'user' || lastRole === 'assistant' ? lastRole : 'unknown',
+    roleSource,
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
     generating,
     online: navigator.onLine,

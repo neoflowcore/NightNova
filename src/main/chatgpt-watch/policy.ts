@@ -75,6 +75,8 @@ export interface WatchDecisionContext {
   awaitingResponse: boolean
   stableObservations: number
   stopOn: ChatWatchStopConditions
+  /** Unknown/missing roles may be monitored without authorizing Send. */
+  readOnly?: boolean
 }
 
 export function decideChatWatch(
@@ -101,7 +103,9 @@ export function decideChatWatch(
     }
   }
   if (!page.online) return { type: 'wait', reason: '오프라인 상태로 네트워크 연결 복구를 대기합니다.' }
-  if (!page.assistantCount) return { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
+  if (!page.assistantCount) return ctx.readOnly
+    ? { type: 'wait', reason: '모의실행: ChatGPT 응답 DOM 구조를 아직 인식하지 못했습니다. 전송은 차단한 채 다시 검사합니다.' }
+    : { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
   if (page.generating) {
     // Extended reasoning is not a completed idle response; never submit while generating.
     return age >= generationStallThreshold
@@ -114,7 +118,9 @@ export function decideChatWatch(
       : { type: 'wait', reason: '마지막 메시지가 사용자 요청입니다. 답변을 기다립니다.' }
   }
   if (page.lastMessageRole !== 'assistant') {
-    return { type: 'needs-human', reason: '마지막 메시지 역할 판독 실패. 사이트 구조를 확인하세요.' }
+    return ctx.readOnly
+      ? { type: 'wait', reason: '모의실행: 마지막 메시지 역할을 확정하지 못했습니다. 실제 전송 없이 계속 관찰합니다.' }
+      : { type: 'needs-human', reason: '마지막 메시지 역할 판독 실패. 실제 자동 전송은 차단합니다.' }
   }
   if (ctx.awaitingResponse) {
     return age >= threshold
@@ -125,9 +131,13 @@ export function decideChatWatch(
     return { type: 'complete', reason: 'NightNova 완료 신호를 확인했습니다. 감독을 자동 종료합니다.' }
   }
   if (!page.composerReady) {
-    return { type: 'needs-human', reason: 'ChatGPT 입력창을 찾을 수 없습니다. 웹페이지 변경 또는 계정 상태 확인이 필요합니다.' }
+    return ctx.readOnly
+      ? { type: 'wait', reason: '모의실행: 입력창이 준비되지 않았습니다. 복구될 때까지 전송 없이 관찰합니다.' }
+      : { type: 'needs-human', reason: 'ChatGPT 입력창을 찾을 수 없습니다. 웹페이지 변경 또는 계정 상태 확인이 필요합니다.' }
   }
-  if (page.hasDraft) return { type: 'needs-human', reason: '사용자가 작성한 미전송 메시지가 있습니다. 덮어쓰지 않습니다.' }
+  if (page.hasDraft) return ctx.readOnly
+    ? { type: 'wait', reason: '모의실행: 미전송 초안이 있어 건드리지 않고 관찰합니다.' }
+    : { type: 'needs-human', reason: '사용자가 작성한 미전송 메시지가 있습니다. 덮어쓰지 않습니다.' }
   if (ctx.sentCount >= ctx.maxAutoMessages) {
     return { type: 'needs-human', reason: '설정한 최대 자동 프롬프트 횟수에 도달했습니다.' }
   }

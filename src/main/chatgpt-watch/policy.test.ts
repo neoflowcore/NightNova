@@ -42,6 +42,16 @@ describe('ChatGPT supervisor configurable stop categories', () => {
   it('always gates explicit payment requests', () => {
     expect(decideChatWatch({ ...base, lastAssistantText: '결제 승인이 필요합니다.' }, { ...context, stopOn: { ...defaultStops, payment: false } }).type).toBe('needs-human')
   })
+  it('allows observation-only on an unfamiliar Work DOM, never Send', () => {
+    const missing = { ...base, assistantCount: 0, lastMessageRole: 'unknown' as const }
+    expect(decideChatWatch(missing, {...context, readOnly:true}).type).toBe('wait')
+    expect(decideChatWatch(missing, {...context, readOnly:false}).type).toBe('needs-human')
+    expect(decideChatWatch({...base,lastMessageRole:'unknown'}, {...context,readOnly:true}).type).toBe('wait')
+    expect(decideChatWatch({...base,lastMessageRole:'unknown'}, {...context,readOnly:false}).type).toBe('needs-human')
+    expect(decideChatWatch({...base,hasDraft:true}, {...context,readOnly:true}).type).toBe('wait')
+    expect(decideChatWatch({...base,composerReady:false}, {...context,readOnly:true}).type).toBe('wait')
+    expect(decideChatWatch({...base,needsLogin:true}, {...context,readOnly:true}).type).toBe('needs-human')
+  })
   it('fails closed if the latest message role cannot be verified', () => {
     expect(decideChatWatch({ ...base, lastMessageRole: 'unknown' }, context).type).toBe('needs-human')
   })

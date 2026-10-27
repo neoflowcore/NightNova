@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS, mayCommitChatWatchPrompt } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, chatWatchRunRemainingSeconds, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS, mayCommitChatWatchPrompt } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -15,6 +15,8 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(assertChatWatchSeconds(3600, 'resume')).toBe(3600)
     expect(() => assertChatWatchSeconds(1, 'resume')).toThrow()
     expect(() => assertChatWatchSeconds(0, 'rotation')).toThrow()
+    expect(assertChatWatchSeconds(28_800, 'session')).toBe(28_800)
+    expect(() => assertChatWatchSeconds(0, 'session')).toThrow()
   })
   it('does not accept timers with fractional seconds or negative input', () => {
     expect(Number.isNaN(secondsFromIntervalInput(1.25, 'seconds'))).toBe(true)
@@ -32,6 +34,12 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(formatWatchDuration(30)).toBe('00:30')
     expect(formatWatchDuration(3_661)).toBe('1:01:01')
     expect(formatWatchDuration(86_400)).toBe('24:00:00')
+  })
+  it('bounds unattended runtime and reports honest remaining time', () => {
+    expect(chatWatchRunRemainingSeconds(1_000, null, 28_800)).toBeNull()
+    expect(chatWatchRunRemainingSeconds(1_000, 1_000, 28_800)).toBe(28_800)
+    expect(chatWatchRunRemainingSeconds(29_800_999, 1_000, 28_800)).toBe(0)
+    expect(chatWatchRunRemainingSeconds(40_000_000, 1_000, 28_800)).toBe(0)
   })
   it('defers automatic tab rotation during user typing and interaction', () => {
     expect(shouldRotateWatchedTab(30_000, 0, 30, false)).toBe(true)

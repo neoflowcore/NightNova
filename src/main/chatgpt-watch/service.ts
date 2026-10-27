@@ -53,6 +53,7 @@ export class ChatGptConversationWatch {
   private assistantKey = ''
   private userCount = 0
   private stableChecks = 0
+  private runtimeDeadline: ReturnType<typeof setTimeout> | null = null
   /** Log a read-only eligible Send only once per unchanged assistant response. */
   private lastDryRunFingerprint = ''
   /** Invalidate in-flight async checks after a Pause, Stop or Restart. */
@@ -124,6 +125,7 @@ export class ChatGptConversationWatch {
       ),
       maxAutoMessages: patch.maxAutoMessages === undefined ? current.maxAutoMessages :
         assertMaxAutoMessages(patch.maxAutoMessages),
+      maxRunSeconds: assertChatWatchSeconds(patch.maxRunSeconds ?? current.maxRunSeconds, 'session'),
       readOnly: typeof patch.readOnly === 'boolean' ? patch.readOnly : current.readOnly,
       resumePrompt: prompt,
       stopOn: {
@@ -202,9 +204,9 @@ export class ChatGptConversationWatch {
   }
 
   private updatePage(observation: ChatWatchDomObservation): void {
-    const { assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole } = observation
+    const { assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole, roleSource } = observation
     this.stateData.page = {
-      assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole
+      assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole, roleSource
     }
     this.stateData.lastCheckAt = Date.now()
     this.notify()
@@ -236,10 +238,10 @@ export class ChatGptConversationWatch {
     if (this.epoch !== requestedEpoch) {
       throw new Error('감독 준비 중 상태가 변경됐습니다. 현재 상태를 다시 확인하세요.')
     }
-    if (!page.assistantCount || page.needsLogin || page.challenge) {
+    if ((page.needsLogin || page.challenge) || (!page.assistantCount && !this.stateData.config.readOnly)) {
       throw new Error('로그인된 ChatGPT 대화에서 AI 답변이 한 번 이상 표시돼야 합니다. 답변 완료 후 상태 확인을 눌러주세요.')
     }
-    if (page.lastMessageRole === 'unknown' && !this.stateData.config.readOnly) {
+    if (page.lastMessageRole !== 'assistant' && page.lastMessageRole !== 'user' && !this.stateData.config.readOnly) {
       throw new Error('마지막 메시지 역할을 판독하지 못했습니다. 먼저 모의실행으로 테스트하세요. 실제 자동 전송은 차단됩니다.')
     }
     this.stopTimer()
@@ -267,6 +269,8 @@ export class ChatGptConversationWatch {
     this.updatePage(page)
     await this.persist()
     if (this.epoch !== armedEpoch || this.stateData.status !== 'watching') return this.state()
+    this.runtimeDeadline = setTimeout(() => { void this.humanGate('설정한 야간 감독 시간이 종료되었습니다. 자동 전송을 중단했습니다.') }, this.stateData.config.maxRunSeconds * 1000)
+    this.runtimeDeadline.unref?.()
     this.timer = setInterval(() => { void this.check() }, this.stateData.config.checkIntervalSeconds * 1000)
     this.timer.unref?.()
     this.addLog('info', (this.stateData.config.readOnly ? '[모의실행] 실제 메시지 전송 금지. ' : '[자동 전송 활성화] ') +
@@ -280,6 +284,8 @@ export class ChatGptConversationWatch {
     this.epoch++
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.runtimeDeadline) clearTimeout(this.runtimeDeadline)
+    this.runtimeDeadline = null
   }
 
   /** Cancel a pending asynchronous Start without changing completed/paused state. */
@@ -351,6 +357,10 @@ export class ChatGptConversationWatch {
 
   async check(): Promise<void> {
     if (this.busy || this.stateData.status !== 'watching') return
+    if (this.stateData.startedAt !== null && Date.now() - this.stateData.startedAt >= this.stateData.config.maxRunSeconds * 1000) {
+      await this.humanGate('설정한 야간 감독 시간이 종료되었습니다. 자동 전송을 중단했습니다.')
+      return
+    }
     this.busy = true
     const epoch = this.epoch
     try {
@@ -383,7 +393,8 @@ export class ChatGptConversationWatch {
         maxAutoMessages: this.stateData.config.maxAutoMessages,
         awaitingResponse: this.stateData.awaitingResponse,
         stableObservations: this.stableChecks,
-        stopOn: this.stateData.config.stopOn
+        stopOn: this.stateData.config.stopOn,
+        readOnly: this.stateData.config.readOnly
       })
       this.stateData.lastDecision = { at: Date.now(), type: decision.type, reason: decision.reason }
       if (decision.type === 'send' && this.stateData.config.readOnly) {

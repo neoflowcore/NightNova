@@ -6,11 +6,12 @@ export type ChatWatchLogLevel = 'info' | 'warning' | 'action'
 
 /** All durations are stored in whole seconds; UI supports seconds, minutes, hours and days. */
 export type ChatWatchTimeUnit = 'seconds' | 'minutes' | 'hours' | 'days'
-export type ChatWatchTimeKind = 'rotation' | 'check' | 'resume'
+export type ChatWatchTimeKind = 'rotation' | 'check' | 'resume' | 'session'
 export const CHAT_WATCH_INTERVAL_LIMITS: Record<ChatWatchTimeKind, { min: number; max: number }> = {
   rotation: { min: 5, max: 86_400 },
   check: { min: 5, max: 86_400 },
-  resume: { min: 15, max: 604_800 }
+  resume: { min: 15, max: 604_800 },
+  session: { min: 60, max: 604_800 }
 }
 export function assertChatWatchSeconds(value: unknown, kind: ChatWatchTimeKind): number {
   const limits = CHAT_WATCH_INTERVAL_LIMITS[kind]
@@ -77,6 +78,15 @@ export function chatWatchIdleCountdown(
   }
 }
 
+/** Remaining permitted time for a supervised run. Null means never armed. */
+export function chatWatchRunRemainingSeconds(
+  now: number, startedAt: number | null, maxRunSeconds: number
+): number | null {
+  if (startedAt === null || !Number.isFinite(now) || !Number.isFinite(startedAt) ||
+      !Number.isFinite(maxRunSeconds) || maxRunSeconds <= 0) return null
+  return Math.max(0, Math.ceil((startedAt + maxRunSeconds * 1000 - now) / 1000))
+}
+
 /** Display a bounded duration without losing hours on long schedules. */
 export function formatWatchDuration(seconds: number): string {
   const value = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0))
@@ -138,6 +148,8 @@ export interface ChatWatchConfig {
   checkIntervalSeconds: number
   /** Maximum messages sent in one explicitly armed supervision session. */
   maxAutoMessages: number
+  /** Hard stop for unattended monitoring; configured as arbitrary sec/min/hr/day. */
+  maxRunSeconds: number
   /** Operator can test all readiness decisions without clicking Send. */
   readOnly: boolean
   /** User-editable text; never inferred from website-provided instructions. */
@@ -160,6 +172,8 @@ export interface ChatWatchPageStatus {
   hasDraft: boolean
   /** The most recent DOM message role, not inferred from message counts. */
   lastMessageRole?: 'user' | 'assistant' | 'unknown'
+  /** Safe selector-family diagnostic: no transcript or prompt contents. */
+  roleSource?: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'unknown'
 }
 
 export interface ChatWatchSnapshot {
@@ -212,6 +226,7 @@ export const DEFAULT_CHAT_WATCH_CONFIG: ChatWatchConfig = {
   intervalSeconds: 600,
   checkIntervalSeconds: 30,
   maxAutoMessages: 12,
+  maxRunSeconds: 28_800,
   readOnly: true,
   resumePrompt: DEFAULT_CHAT_WATCH_PROMPT,
   stopOn: {

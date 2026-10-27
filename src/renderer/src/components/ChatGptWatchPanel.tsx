@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTabsStore, type Tab } from '@/stores/tabs'
-import { isSupportedChatGptConversationUrl, intervalInputFromSeconds, secondsFromIntervalInput, chatWatchIdleCountdown, formatWatchDuration, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
+import { isSupportedChatGptConversationUrl, intervalInputFromSeconds, secondsFromIntervalInput, chatWatchIdleCountdown, chatWatchRunRemainingSeconds, formatWatchDuration, type ChatWatchConfig, type ChatWatchDashboard, type ChatWatchTimeKind, type ChatWatchTimeUnit } from '../../../shared/chatgpt-watch'
 
 export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webContentsId: number | null }) {
   const [state, setState] = useState<ChatWatchDashboard | null>(null)
   const [error, setError] = useState('')
   const [working, setWorking] = useState(false)
+  const [activeOperation, setActiveOperation] = useState('')
   const [clock, setClock] = useState(() => Date.now())
   const [settingsTab, setSettingsTab] = useState<number | null>(null)
   const [drafts, setDrafts] = useState<Record<number,string>>({})
@@ -21,7 +22,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
     const off = window.rev.chatWatch.onState(v => { if (mounted) setState(v) })
     return () => { mounted = false; off() }
   }, [])
-  const run = async (job: () => Promise<ChatWatchDashboard>): Promise<void> => {
+  const run = async (job: () => Promise<ChatWatchDashboard>, label = '설정 적용'): Promise<void> => {
+    setActiveOperation(label)
     setWorking(true); setError('')
     try { setState(await job()) }
     catch (e) {
@@ -29,7 +31,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       setError('작업 실행 실패: ' + message)
       // The operator must not have to scroll to the bottom to find why Start failed.
       window.requestAnimationFrame(() => document.getElementById('nightnova-watch-error')?.scrollIntoView({ block: 'nearest' }))
-    } finally { setWorking(false) }
+    } finally { setWorking(false); setActiveOperation('') }
   }
   if (!state) return <section className="nightnova-wb-section">ChatGPT 감독 연결 중... {error}</section>
   const targets = tabs.filter(t => t.webContentsId && isSupportedChatGptConversationUrl(t.url))
@@ -59,8 +61,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       </select>
       <button type="button" disabled={disabled || working} onClick={() => {
         const value = secondsFromIntervalInput(draft.amount, draft.unit)
-        const min = kind === 'resume' ? 15 : 5
-        const max = kind === 'resume' ? 604800 : 86400
+        const min = kind === 'resume' ? 15 : kind === 'session' ? 60 : 5
+        const max = kind === 'resume' || kind === 'session' ? 604800 : 86400
         if (!Number.isSafeInteger(value) || value < min || value > max) {
           setError(label + '은 ' + min + '~' + max + '초 범위로 설정하세요.')
           return
@@ -82,6 +84,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
+    {working && <p role="status" className="nightnova-wb-note">{activeOperation} 처리 중... 잠시 뒤 결과를 표시합니다.</p>}
     {error && <p id="nightnova-watch-error" role="alert" className="nightnova-error" style={{position:'sticky',top:0,zIndex:5,padding:'10px',background:'var(--panel-bg, #2b1414)'}}>{error}</p>}
     <p className="nightnova-wb-note">긴급 중단 단축키: <strong>Alt+Shift+X</strong> · ChatGPT 탭에서 입력 중이어도 동작합니다.</p>
     <p className="nightnova-wb-note" role="status">
@@ -109,6 +112,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         <p>{!snap ? '[미등록 · 전송 없음] ' : snap.config.readOnly ? '[모의실행 · 전송 없음] ' : '[실제 전송 허용] '}{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.config.readOnly && <p className="nightnova-wb-note">모의실행 전송 조건 충족 {snap.dryRunReadyCount ?? 0}회 · 실제 발송 0회</p>}
         {snap?.reason && <p>{snap.reason}</p>}
+        {snap?.page && <p className="nightnova-wb-note">판독 방식: {snap.page.roleSource ?? '이전 버전'} · AI {snap.page.assistantCount}개 / 사용자 {snap.page.userCount}개</p>}
+        {snap?.status === 'watching' && snap.startedAt !== null && <p className="nightnova-wb-note">야간 감독 남은 시간: {formatWatchDuration(chatWatchRunRemainingSeconds(clock, snap.startedAt, snap.config.maxRunSeconds) ?? 0)}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
         {snap?.lastProgressAt && <p className="nightnova-wb-note">마지막 진행: {new Date(snap.lastProgressAt).toLocaleTimeString()} · 최근 검사: {snap.lastCheckAt ? new Date(snap.lastCheckAt).toLocaleTimeString() : '없음'}</p>}
@@ -124,7 +129,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
           <button type="button" onClick={() => useTabsStore.getState().selectTab(t.id)}>탭 보기</button>
           <button type="button" onClick={() => setSettingsTab(id)}>설정 선택</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.configure(id, {}))}>설정 준비</button>
-          <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id))}>시작</button>
+          <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id), '감독 시작 및 화면 판독')}>시작</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
           <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.inspect(id))}>상태 확인</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.checkNow(id))}>지금 판단</button>
@@ -157,6 +162,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         value => configure({intervalSeconds:value}), active)}
       {timeField('상태 점검 간격', 'check-' + settingsId, config.checkIntervalSeconds, 'check',
         value => configure({checkIntervalSeconds:value}), active)}
+      {timeField('야간 감독 최대 실행시간', 'session-' + settingsId, config.maxRunSeconds, 'session',
+        value => configure({maxRunSeconds:value}), active)}
       <div className="nightnova-wb-line">
         <label>자동 재개 최대 횟수
           <input type="number" min={1} max={24} step={1} disabled={active || working}
