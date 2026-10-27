@@ -112,6 +112,11 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         <p>{!snap ? '[미등록 · 전송 없음] ' : snap.config.readOnly ? '[모의실행 · 전송 없음] ' : '[실제 전송 허용] '}{snap?.status === 'completed' ? '작업 완료' : snap?.status ?? '미등록'} · 자동 전송 {snap?.sentCount ?? 0}/{snap?.config.maxAutoMessages ?? 12}회 · 시도 {snap?.attemptCount ?? 0}회</p>
         {snap?.config.readOnly && <p className="nightnova-wb-note">모의실행 전송 조건 충족 {snap.dryRunReadyCount ?? 0}회 · 실제 발송 0회</p>}
         {snap?.reason && <p>{snap.reason}</p>}
+        {snap?.lastRun && <p className="nightnova-wb-note" title="대화 내용이나 로그인 정보 없이 종료 시 저장된 요약">
+          마지막 작업: {new Date(snap.lastRun.endedAt).toLocaleString()} · {snap.lastRun.outcome}
+          · 실제 전송 {snap.lastRun.sentCount}회 · 모의 판단 {snap.lastRun.dryRunReadyCount}회
+          · {snap.lastRun.reason}
+        </p>}
         {snap?.page && <p className="nightnova-wb-note">판독 방식: {snap.page.roleSource ?? '이전 버전'} · AI {snap.page.assistantCount}개 / 사용자 {snap.page.userCount}개</p>}
         {snap?.status === 'watching' && snap.startedAt !== null && <p className="nightnova-wb-note">야간 감독 남은 시간: {formatWatchDuration(chatWatchRunRemainingSeconds(clock, snap.startedAt, snap.config.maxRunSeconds) ?? 0)}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
@@ -205,7 +210,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
           sentCount: s.snapshot.sentCount,
           attemptCount: s.snapshot.attemptCount,
           lastDecision: s.snapshot.lastDecision,
-          logs: s.snapshot.logs
+          logs: s.snapshot.logs,
+          lastRun: s.snapshot.lastRun
         }))
       }
       void navigator.clipboard.writeText(JSON.stringify(data, null, 2))

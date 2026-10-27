@@ -176,6 +176,33 @@ export interface ChatWatchPageStatus {
   roleSource?: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'unknown'
 }
 
+/** Persist only bounded action counters, never a URL, conversation or prompt. */
+export interface ChatWatchRunSummary {
+  startedAt: number
+  endedAt: number
+  outcome: 'paused' | 'off' | 'needs-human' | 'completed'
+  readOnly: boolean
+  sentCount: number
+  dryRunReadyCount: number
+  attemptCount: number
+  reason: string
+}
+export function validWatchRunSummary(value: unknown): ChatWatchRunSummary | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Partial<ChatWatchRunSummary>
+  if (typeof v.startedAt !== 'number' || typeof v.endedAt !== 'number' ||
+      !Number.isSafeInteger(v.startedAt) || !Number.isSafeInteger(v.endedAt) ||
+      v.startedAt < 0 || v.endedAt < v.startedAt ||
+      !['paused','off','needs-human','completed'].includes(v.outcome ?? '') ||
+      typeof v.readOnly !== 'boolean' ||
+      typeof v.sentCount !== 'number' || typeof v.dryRunReadyCount !== 'number' ||
+      typeof v.attemptCount !== 'number' ||
+      !Number.isSafeInteger(v.sentCount) || !Number.isSafeInteger(v.dryRunReadyCount) ||
+      !Number.isSafeInteger(v.attemptCount) ||
+      typeof v.reason !== 'string' || v.reason.length > 240) return null
+  return v as ChatWatchRunSummary
+}
+
 export interface ChatWatchSnapshot {
   version: 1
   status: ChatWatchStatus
@@ -195,6 +222,7 @@ export interface ChatWatchSnapshot {
   /** Ephemeral decision reasoning shown to the operator, never stored with chat text. */
   lastDecision?: { at: number; type: 'wait' | 'send' | 'needs-human' | 'complete'; reason: string }
   reason: string | null
+  lastRun: ChatWatchRunSummary | null
   page: ChatWatchPageStatus | null
   logs: ChatWatchLog[]
 }
@@ -261,6 +289,7 @@ export function createChatWatchSnapshot(): ChatWatchSnapshot {
     lastDryRunReadyAt: null,
     awaitingResponse: false,
     reason: null,
+    lastRun: null,
     page: null,
     logs: []
   }

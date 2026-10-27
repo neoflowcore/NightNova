@@ -3,7 +3,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  createChatWatchSnapshot, assertChatWatchSeconds, mayCommitChatWatchPrompt,
+  createChatWatchSnapshot, assertChatWatchSeconds, mayCommitChatWatchPrompt, validWatchRunSummary,
+  type ChatWatchStatus,
   type ChatWatchConfig, type ChatWatchDomObservation, type ChatWatchSnapshot
 } from '../../shared/chatgpt-watch'
 import { isChatGptConversation, sameConversation, decideChatWatch } from './policy'
@@ -83,11 +84,12 @@ export class ChatGptConversationWatch {
         try {
           const raw = await readFile(getSavePath(this.storageKey), 'utf8')
           if (raw.length > 25_000) throw new Error('설정 크기 제한 초과')
-          const saved = JSON.parse(raw) as { config?: Partial<ChatWatchConfig> }
+          const saved = JSON.parse(raw) as { config?: Partial<ChatWatchConfig>; lastRun?: unknown }
           // A stop/pause during async disk read must not resurrect a stale
           // state or overwrite a newer operator action.
           if (initializationEpoch !== this.epoch) return
           if (saved && saved.config) {
+            this.stateData.lastRun = validWatchRunSummary(saved.lastRun)
             this.stateData.config = this.validateConfig(saved.config)
             // Restoring an old live-mode preference never grants fresh Send
             // authority on app restart. Operator must opt into live mode again.
@@ -141,12 +143,29 @@ export class ChatGptConversationWatch {
     }
   }
 
+  private rememberRun(outcome: ChatWatchStatus, reason: string): void {
+    if (this.stateData.startedAt === null) return
+    if (outcome !== 'paused' && outcome !== 'off' &&
+        outcome !== 'needs-human' && outcome !== 'completed') return
+    this.stateData.lastRun = {
+      startedAt: this.stateData.startedAt,
+      endedAt: Date.now(),
+      outcome,
+      readOnly: this.stateData.config.readOnly,
+      sentCount: this.stateData.sentCount,
+      dryRunReadyCount: this.stateData.dryRunReadyCount,
+      attemptCount: this.stateData.attemptCount,
+      reason: reason.slice(0, 240)
+    }
+  }
+
   private persist(): Promise<void> {
     const data = JSON.stringify({
       version: 1,
       // Only user-authored settings persist. Never store conversation content,
       // cookies, ChatGPT auth tokens, last message hashes or browser passwords.
       config: this.stateData.config,
+      lastRun: this.stateData.lastRun,
       savedAt: Date.now()
     }, null, 2)
     this.saving = this.saving.catch(() => undefined).then(async () => {
@@ -302,6 +321,7 @@ export class ChatGptConversationWatch {
     this.stopTimer()
     this.stateData.status = 'needs-human'
     this.stateData.reason = reason
+    this.rememberRun('needs-human', reason)
     this.stateData.lastDecision = { at: Date.now(), type: 'needs-human', reason }
     this.addLog('warning', reason)
     const win = this.mainWindow()
@@ -319,6 +339,7 @@ export class ChatGptConversationWatch {
     this.stopTimer()
     this.stateData.status = 'paused'
     this.stateData.reason = '사용자가 ChatGPT 대화 감독을 일시정지했습니다.'
+    this.rememberRun('paused', this.stateData.reason)
     this.stateData.lastDecision = { at: Date.now(), type: 'wait', reason: '사용자가 일시정지했습니다.' }
     this.addLog('info', '감독을 일시정지했습니다. 자동 메시지를 보내지 않습니다.')
     await this.persist()
@@ -328,6 +349,7 @@ export class ChatGptConversationWatch {
   async stop(): Promise<ChatWatchSnapshot> {
     this.stopTimer()
     this.stateData.status = 'off'
+    this.rememberRun('off', '사용자가 감독을 종료했습니다.')
     this.stateData.reason = null
     this.stateData.targetUrl = null
     this.stateData.webContentsId = null
@@ -425,6 +447,7 @@ export class ChatGptConversationWatch {
         this.stateData.status = 'completed'
         this.stateData.awaitingResponse = false
         this.stateData.reason = decision.reason
+        this.rememberRun('completed', decision.reason)
         this.addLog('info', decision.reason)
         await this.persist().catch(() => undefined)
         return

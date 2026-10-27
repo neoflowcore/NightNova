@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, chatWatchRunRemainingSeconds, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS, mayCommitChatWatchPrompt } from '../../shared/chatgpt-watch'
+import { nextWatchedTabId, createChatWatchSnapshot, assertChatWatchSeconds, secondsFromIntervalInput, intervalInputFromSeconds, chatWatchIdleCountdown, chatWatchRunRemainingSeconds, formatWatchDuration, shouldRotateWatchedTab, canSendAfterOperatorActivity, OPERATOR_SEND_GRACE_MS, mayCommitChatWatchPrompt, validWatchRunSummary } from '../../shared/chatgpt-watch'
 import { decideChatWatch } from './policy'
 import type { ChatWatchDomObservation } from '../../shared/chatgpt-watch'
 describe('thinking macro: displayed tab rotation', () => {
@@ -71,6 +71,15 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(nextWatchedTabId('t3',['t1','t2','t3'])).toBe('t1')
     expect(nextWatchedTabId('t4',['t1','t2','t3'])).toBe('t1')
     expect(nextWatchedTabId('t1',[])).toBeNull()
+  })
+  it('accepts bounded session summary but rejects forged persisted status', () => {
+    const summary = { startedAt:10,endedAt:20,outcome:'paused' as const,
+      readOnly:true,sentCount:0,dryRunReadyCount:2,attemptCount:0,reason:'수동 종료' }
+    expect(validWatchRunSummary(summary)).toEqual(summary)
+    expect(validWatchRunSummary({...summary,endedAt:5})).toBeNull()
+    expect(validWatchRunSummary({...summary,outcome:'watching'})).toBeNull()
+    expect(validWatchRunSummary({...summary,reason:'x'.repeat(241)})).toBeNull()
+    expect(validWatchRunSummary(null)).toBeNull()
   })
   it('defaults to non-sending supervision and independent virtual metrics', () => {
     const first = createChatWatchSnapshot()
