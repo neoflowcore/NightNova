@@ -236,9 +236,11 @@ export class ChatGptConversationWatch {
     if (this.epoch !== requestedEpoch) {
       throw new Error('감독 준비 중 상태가 변경됐습니다. 현재 상태를 다시 확인하세요.')
     }
-    if (!page.assistantCount || page.needsLogin || page.challenge ||
-        page.lastMessageRole !== 'assistant' && page.lastMessageRole !== 'user') {
-      throw new Error('로그인된 ChatGPT 대화에서 한 번 이상 답변이 오간 다음 감독을 시작하세요.')
+    if (!page.assistantCount || page.needsLogin || page.challenge) {
+      throw new Error('로그인된 ChatGPT 대화에서 AI 답변이 한 번 이상 표시돼야 합니다. 답변 완료 후 상태 확인을 눌러주세요.')
+    }
+    if (page.lastMessageRole === 'unknown' && !this.stateData.config.readOnly) {
+      throw new Error('마지막 메시지 역할을 판독하지 못했습니다. 먼저 모의실행으로 테스트하세요. 실제 자동 전송은 차단됩니다.')
     }
     this.stopTimer()
     const armedEpoch = this.epoch

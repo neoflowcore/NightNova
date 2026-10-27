@@ -23,7 +23,13 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }, [])
   const run = async (job: () => Promise<ChatWatchDashboard>): Promise<void> => {
     setWorking(true); setError('')
-    try { setState(await job()) } catch (e) { setError(String(e)) } finally { setWorking(false) }
+    try { setState(await job()) }
+    catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setError('작업 실행 실패: ' + message)
+      // The operator must not have to scroll to the bottom to find why Start failed.
+      window.requestAnimationFrame(() => document.getElementById('nightnova-watch-error')?.scrollIntoView({ block: 'nearest' }))
+    } finally { setWorking(false) }
   }
   if (!state) return <section className="nightnova-wb-section">ChatGPT 감독 연결 중... {error}</section>
   const targets = tabs.filter(t => t.webContentsId && isSupportedChatGptConversationUrl(t.url))
@@ -76,6 +82,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
+    {error && <p id="nightnova-watch-error" role="alert" className="nightnova-error" style={{position:'sticky',top:0,zIndex:5,padding:'10px',background:'var(--panel-bg, #2b1414)'}}>{error}</p>}
     <p className="nightnova-wb-note">긴급 중단 단축키: <strong>Alt+Shift+X</strong> · ChatGPT 탭에서 입력 중이어도 동작합니다.</p>
     <p className="nightnova-wb-note" role="status">
       감독 중 {watching}개 · 완료 {completed}개 · 직접 확인 {human}개 · 등록 {state.sessions.length}개 (최대 8개)
@@ -179,7 +186,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
       <button disabled={active || working} onClick={() => configure({resumePrompt:drafts[settingsId!] ?? config.resumePrompt})}>프롬프트 저장</button>
     </>}
     {state.errors.map((e,i)=><p className="nightnova-error" key={i}>{e}</p>)}
-    {error && <p role="alert" className="nightnova-error">{error}</p>}
+
     <button type="button" onClick={() => {
       const data = {
         product: 'NightNova', exportedAt: new Date().toISOString(),

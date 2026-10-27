@@ -17,7 +17,7 @@ import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
 import { registerNightnovaIpc } from './nightnova/ipc'
 import { registerChatGptWatchIpc } from './chatgpt-watch/ipc'
-import { canGrantOpenAiStorageAccess, isOfficialOpenAiLoginUrl, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
+import { canGrantChatGptClipboardWrite, canGrantOpenAiStorageAccess, isOfficialOpenAiLoginUrl, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
 import { registerExternalIpc } from './ipc/external-ipc'
@@ -850,24 +850,26 @@ app.whenReady().then(() => {
     app.dock?.setIcon(appIcon)
   }
 
-  // Real Chrome shows a prompt for accelerometer/camera/clipboard/geolocation/
-  // microphone/midi/notifications/etc. — Electron's default is to grant most
-  // of them silently, which amiunique flagged at 0.07% similarity. Deny by
-  // default so the Permissions API reports 'prompt' / 'denied' like a
-  // freshly-installed Chrome with no granted sites.
-  //
-  // Apply the deny-all handlers to every non-default session as it's created
-  // (today that's the shared persist:rever-shared partition; future isolated
-  // windows get covered automatically). The app's own UI runs on the default
-  // session — skip it so clipboard/etc. in the renderer keep working.
+  // Deny sensitive permissions by default, but preserve first-party OpenAI
+  // login storage access and ChatGPT's user-triggered sanitized clipboard WRITE.
+  // The latter is required for ChatGPT's built-in copy button in Electron.
+  // Clipboard READ stays denied (no silent exfiltration).
+  // Applies to each non-default profile; app UI uses the default session.
   app.on('session-created', (createdSession) => {
     if (createdSession === session.defaultSession) return
     createdSession.setPermissionRequestHandler((wc, permission, callback, details) => {
-      const top=wc?.getURL() ?? ''
-      callback(canGrantOpenAiStorageAccess(permission,top,details?.requestingUrl ?? top))
+      const top = wc?.getURL() ?? ''
+      const asking = details?.requestingUrl ?? ''
+      const firstPartyWrite = wc?.getType() === 'webview' &&
+        canGrantChatGptClipboardWrite(permission, top, asking)
+      callback(firstPartyWrite || canGrantOpenAiStorageAccess(permission, top, asking || top))
     })
-    createdSession.setPermissionCheckHandler((wc,permission,requestingOrigin) =>
-      canGrantOpenAiStorageAccess(permission,wc?.getURL() ?? '',requestingOrigin))
+    createdSession.setPermissionCheckHandler((wc, permission, requestingOrigin) => {
+      const top = wc?.getURL() ?? ''
+      const firstPartyWrite = wc?.getType() === 'webview' &&
+        canGrantChatGptClipboardWrite(permission, top, requestingOrigin)
+      return firstPartyWrite || canGrantOpenAiStorageAccess(permission, top, requestingOrigin)
+    })
     attachDownloads(createdSession)
     ensureAuthDiagnostics(createdSession)
   })

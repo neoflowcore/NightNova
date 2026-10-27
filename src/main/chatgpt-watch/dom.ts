@@ -7,7 +7,12 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   const assistantNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'assistant')
   const userNodes = nodes.filter(el => el.getAttribute('data-message-author-role') === 'user')
   const last = assistantNodes[assistantNodes.length - 1]
-  const lastNode = nodes[nodes.length - 1]
+  // Ignore transient tool/status wrappers and nodes with no recognized role.
+  // The final recognized assistant/user message determines the safe state.
+  const lastNode = nodes.filter(el => {
+    const role = el.getAttribute('data-message-author-role')
+    return role === 'assistant' || role === 'user'
+  }).at(-1)
   const lastRole = lastNode?.getAttribute('data-message-author-role')
   const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
   const draftText = editor ? (editor.value ?? editor.innerText ?? editor.textContent ?? '') : ''

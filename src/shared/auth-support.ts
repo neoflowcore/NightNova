@@ -51,6 +51,26 @@ export function isOfficialOpenAiLoginUrl(value: string): boolean {
   }
 }
 
+/** Only grant sanitized Clipboard WRITE for ChatGPT's own first-party copy
+ * buttons. Clipboard READ is deliberately never granted. Both requesting
+ * frame and containing webview must be the exact same trusted origin.
+ * Port overrides, HTTP and subframes from other sites fail closed. */
+export function canGrantChatGptClipboardWrite(
+  permission: string, topLevelUrl: string, requestingUrl: string
+): boolean {
+  if (permission !== 'clipboard-sanitized-write' && permission !== 'clipboard-write') return false
+  try {
+    const top = new URL(topLevelUrl)
+    const request = new URL(requestingUrl)
+    return top.protocol === 'https:' && request.protocol === 'https:' &&
+      !top.port && !request.port &&
+      (top.hostname === 'chatgpt.com' || top.hostname === 'chat.openai.com') &&
+      top.origin === request.origin
+  } catch {
+    return false
+  }
+}
+
 /** Session permissions for first-party OpenAI sign-in, not carte blanche access. */
 export function canGrantOpenAiStorageAccess(
   permission: string, topLevelUrl: string, requestingUrl: string

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   isOfficialOpenAiLoginUrl,
   canGrantOpenAiStorageAccess,
+  canGrantChatGptClipboardWrite,
   summarizeOpenAiAuthResponse,
   summarizeOpenAiNetworkError,
   isOpenAiAuthenticationFlowUrl,
@@ -34,6 +35,18 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
     expect(shouldAvoidAutomaticCdp('https://accounts.google.com/o/oauth2/v2/auth')).toBe(true)
     expect(shouldAvoidAutomaticCdp('https://example.org/')).toBe(false)
     expect(shouldAvoidAutomaticCdp('https://chatgpt.com.evil.example/')).toBe(false)
+  })
+  it('allows first-party ChatGPT sanitized clipboard WRITE, never READ', () => {
+    const top = 'https://chatgpt.com/c/12345678-1234-1234-1234-123456789abc'
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', top, 'https://chatgpt.com')).toBe(true)
+    expect(canGrantChatGptClipboardWrite('clipboard-write', top, 'https://chatgpt.com/c/123')).toBe(true)
+    expect(canGrantChatGptClipboardWrite('clipboard-read', top, 'https://chatgpt.com')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('deprecated-sync-clipboard-read', top, 'https://chatgpt.com')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', top, 'https://auth.openai.com')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', top, 'https://chatgpt.com.evil.example')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', top, 'http://chatgpt.com')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', top, 'https://chatgpt.com:1234')).toBe(false)
+    expect(canGrantChatGptClipboardWrite('clipboard-sanitized-write', 'https://evil.example', 'https://chatgpt.com')).toBe(false)
   })
   it('only grants minimal storage permissions to official OpenAI login origins', () => {
     expect(canGrantOpenAiStorageAccess('storage-access',
