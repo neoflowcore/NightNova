@@ -170,6 +170,8 @@ export interface ChatWatchPageStatus {
   online: boolean
   composerReady: boolean
   hasDraft: boolean
+  /** ChatGPT UI declares a broken connection even if navigator.onLine is true. */
+  connectionProblem?: boolean
   /** The most recent DOM message role, not inferred from message counts. */
   lastMessageRole?: 'user' | 'assistant' | 'unknown'
   /** Safe selector-family diagnostic: no transcript or prompt contents. */
@@ -199,6 +201,8 @@ export function validWatchRunSummary(value: unknown): ChatWatchRunSummary | null
       typeof v.attemptCount !== 'number' ||
       !Number.isSafeInteger(v.sentCount) || !Number.isSafeInteger(v.dryRunReadyCount) ||
       !Number.isSafeInteger(v.attemptCount) ||
+      v.sentCount < 0 || v.dryRunReadyCount < 0 || v.attemptCount < 0 ||
+      v.sentCount > v.attemptCount ||
       typeof v.reason !== 'string' || v.reason.length > 240) return null
   return v as ChatWatchRunSummary
 }

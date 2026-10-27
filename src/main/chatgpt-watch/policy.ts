@@ -102,7 +102,12 @@ export function decideChatWatch(
       return { type: 'needs-human', reason: '안전 중단 조건에 도달했습니다: ' + labels[category] }
     }
   }
-  if (!page.online) return { type: 'wait', reason: '오프라인 상태로 네트워크 연결 복구를 대기합니다.' }
+  if (!page.online) return ctx.readOnly
+    ? { type: 'wait', reason: '모의실행: 오프라인 상태에서 연결 복구를 기다립니다. 실제 메시지는 보내지 않습니다.' }
+    : { type: 'needs-human', reason: '네트워크가 오프라인입니다. 자동 전송을 중단하고 연결 상태를 확인하세요.' }
+  if (page.connectionProblem) return ctx.readOnly
+    ? { type: 'wait', reason: '모의실행: ChatGPT 연결 해제 알림이 표시되어 전송 없이 상태를 관찰합니다.' }
+    : { type: 'needs-human', reason: 'ChatGPT 화면에 연결 해제 오류가 표시되었습니다. 중복 전송 위험 때문에 멈춥니다.' }
   if (!page.assistantCount) return ctx.readOnly
     ? { type: 'wait', reason: '모의실행: ChatGPT 응답 DOM 구조를 아직 인식하지 못했습니다. 전송은 차단한 채 다시 검사합니다.' }
     : { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }

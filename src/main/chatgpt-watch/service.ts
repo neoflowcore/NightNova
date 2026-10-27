@@ -223,9 +223,9 @@ export class ChatGptConversationWatch {
   }
 
   private updatePage(observation: ChatWatchDomObservation): void {
-    const { assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole, roleSource } = observation
+    const { assistantCount, userCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource } = observation
     this.stateData.page = {
-      assistantCount, userCount, generating, online, composerReady, hasDraft, lastMessageRole, roleSource
+      assistantCount, userCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource
     }
     this.stateData.lastCheckAt = Date.now()
     this.notify()
@@ -477,7 +477,7 @@ export class ChatGptConversationWatch {
     if (!this.isArmed(epoch, wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
         fresh.userCount !== expected.userCount || fresh.lastMessageRole !== 'assistant' ||
         fresh.generating || fresh.hasDraft || fresh.needsLogin || fresh.challenge ||
-        !fresh.online || !fresh.composerReady) return
+        !fresh.online || fresh.connectionProblem || !fresh.composerReady) return
 
     const prompt = this.stateData.config.resumePrompt
     const operationId = randomUUID()
@@ -495,7 +495,8 @@ export class ChatGptConversationWatch {
     // Pause/Stop wins over an in-flight read; never transition a stopped tab
     // back to needs-human when the operator has already stopped it.
     if (!this.isArmed(epoch, wc.id)) return
-    if (!reviewed.hasDraft || reviewed.lastMessageRole !== 'assistant' ||
+    if (!reviewed.hasDraft || reviewed.connectionProblem || !reviewed.online ||
+        reviewed.lastMessageRole !== 'assistant' ||
         reviewed.generating || reviewed.userCount !== expected.userCount ||
         fingerprint(reviewed) !== fingerprint(expected)) {
       await this.humanGate('전송 직전 대화 상태가 변경되었습니다. 작성된 초안을 확인하세요.')

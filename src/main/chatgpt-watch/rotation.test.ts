@@ -79,6 +79,9 @@ describe('thinking macro: displayed tab rotation', () => {
     expect(validWatchRunSummary({...summary,endedAt:5})).toBeNull()
     expect(validWatchRunSummary({...summary,outcome:'watching'})).toBeNull()
     expect(validWatchRunSummary({...summary,reason:'x'.repeat(241)})).toBeNull()
+    expect(validWatchRunSummary({...summary,sentCount:-1})).toBeNull()
+    expect(validWatchRunSummary({...summary,attemptCount:-1})).toBeNull()
+    expect(validWatchRunSummary({...summary,sentCount:2})).toBeNull()
     expect(validWatchRunSummary(null)).toBeNull()
   })
   it('defaults to non-sending supervision and independent virtual metrics', () => {

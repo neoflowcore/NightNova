@@ -60,6 +60,12 @@ describe('ChatGPT supervisor configurable stop categories', () => {
     expect(isChatGptConversation('http://chatgpt.com/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
     expect(isChatGptConversation('https://chatgpt.com.evil.test/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
   })
+  it('fails closed on ChatGPT UI disconnection, even with online browser', () => {
+    const disconnected = { ...base, connectionProblem: true, online: true }
+    expect(decideChatWatch(disconnected, context).type).toBe('needs-human')
+    expect(decideChatWatch(disconnected, {...context,readOnly:true}).type).toBe('wait')
+    expect(decideChatWatch({...disconnected,connectionProblem:false}, context).type).toBe('send')
+  })
   it('does not resume with a user draft, offline session, or missing composer', () => {
     const ready = { ...base, lastMessageRole: 'assistant' as const }
     expect(decideChatWatch({ ...ready, hasDraft: true }, context).type).toBe('needs-human')

@@ -47,8 +47,10 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
   const generating = visible(stop) && !stop.disabled
   const password = document.querySelector('input[type="password"]')
   const challenge = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="hcaptcha"], #cf-challenge-running')
-  const alerts = Array.from(document.querySelectorAll('[role="alert"]'))
-    .filter(visible).slice(-3).map(el => (el.innerText ?? '').slice(0, 180)).join(' ')
+  const alerts = Array.from(document.querySelectorAll(
+    '[role="alert"], [data-sonner-toast], [data-testid="toast"], [data-testid="error-message"]'
+  )).filter(visible).slice(-5).map(el => (el.innerText || el.textContent || '').slice(0, 180)).join(' ')
+  const connectionProblem = /연결이\s*해제되었습니다|네트워크\s*(?:연결|오류)|연결을\s*잃었습니다|connection\s*(?:lost|interrupted)|network\s*error|you\s*are\s*offline|failed\s*to\s*fetch|connection\s*disconnected/i.test(alerts)
   return {
     url: location.href,
     assistantCount: messages.assistant.length,
@@ -58,6 +60,7 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
     generating,
     online: navigator.onLine,
+    connectionProblem,
     // A hidden webview can have a working editor but no visible layout.
     // Supervision can inspect the editor while hidden; send is separately
     // restricted by main process to the tab that the operator is viewing.
