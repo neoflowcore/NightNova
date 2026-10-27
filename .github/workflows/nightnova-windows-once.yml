@@ -2,11 +2,6 @@ name: NightNova Windows Manual Acceptance
 # ACTION ECONOMY STRICT: never run on a push. Generate EXE/artifact ONLY
 # when the operator explicitly requests an installer or hands-on acceptance.
 on:
-  push:
-    branches:
-      - nightnova-windows-acceptance-20261028-fixed
-    paths:
-      - .github/workflows/nightnova-windows-once.yml
   workflow_dispatch:
 
 permissions:
