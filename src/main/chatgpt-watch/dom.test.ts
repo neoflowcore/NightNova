@@ -13,6 +13,7 @@ interface MockDomOptions {
   sendAvailable?: boolean
   authVisible?: boolean
   online?: boolean
+  useTurnWrappers?: boolean
 }
 
 function mockDom(options: MockDomOptions = {}) {
@@ -55,11 +56,19 @@ function mockDom(options: MockDomOptions = {}) {
       }
       return null
     },
-    querySelectorAll: () => [
-      { getAttribute:(n:string)=>n==='data-message-author-role'?'user':null },
-      { getAttribute:(n:string)=>n==='data-message-author-role'?(options.role ?? 'assistant'):null,
-        innerText:'prior assistant', textContent:'prior assistant' }
-    ],
+    querySelectorAll: (selector:string) => {
+      if (selector === '[data-message-author-role]' && options.useTurnWrappers) return []
+      if (selector === '[data-testid^="conversation-turn-"]' && !options.useTurnWrappers) return []
+      return [
+        { getAttribute:(n:string)=>options.useTurnWrappers
+          ? n==='data-testid' ? 'conversation-turn-user' : null
+          : n==='data-message-author-role' ? 'user' : null },
+        { getAttribute:(n:string)=>options.useTurnWrappers
+          ? n==='data-testid' ? 'conversation-turn-assistant' : null
+          : n==='data-message-author-role' ? (options.role ?? 'assistant') : null,
+          innerText:'prior assistant', textContent:'prior assistant' }
+      ]
+    },
     execCommand: (_command: string, _show: boolean, value: string) => {
       editor.innerText = value
       editor.textContent = value
@@ -110,6 +119,23 @@ describe('thinking macro DOM send two-stage protocol', () => {
     expect(test.getClicks()).toBe(1)
   })
 
+  it('uses Work conversation-turn wrappers consistently for prepare and commit', async () => {
+    const test = mockDom({ useTurnWrappers:true })
+    expect((await runInNewContext(prepare('resume'),test.context)).prepared).toBe(true)
+    const script = chatWatchCommitScript('resume',url,'test-operation',deadline(),1,1,'prior assistant','turn-role')
+    const outcome = runInNewContext(script,test.context)
+    expect(outcome.clicked).toBe(true)
+    expect(test.getClicks()).toBe(1)
+  })
+  it('refuses a selector-family change after preparing a draft', async () => {
+    const options = { useTurnWrappers:false }
+    const test = mockDom(options)
+    expect((await runInNewContext(prepare('resume'),test.context)).prepared).toBe(true)
+    options.useTurnWrappers = true
+    const outcome = runInNewContext(commit('resume'),test.context)
+    expect(outcome.clicked).toBe(false)
+    expect(test.getClicks()).toBe(0)
+  })
   it('rejects navigation changes before both prepare and commit', async () => {
     const test = mockDom({ origin: 'https://other.example', draft: 'finish the task' })
     const prep = await runInNewContext(prepare('finish the task'), test.context)

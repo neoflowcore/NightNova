@@ -318,6 +318,7 @@ export class ChatGptConversationWatch {
   }
 
   private async humanGate(reason: string): Promise<void> {
+    if (this.stateData.status !== 'watching') return
     this.stopTimer()
     this.stateData.status = 'needs-human'
     this.stateData.reason = reason
@@ -507,7 +508,8 @@ export class ChatGptConversationWatch {
     const commitDeadline = Date.now() + 2_000
     const outcome = await withDomTimeout(wc.executeJavaScript(chatWatchCommitScript(
       prompt, expected.url, operationId, commitDeadline,
-      expected.assistantCount, expected.userCount, expected.lastAssistantText
+      expected.assistantCount, expected.userCount, expected.lastAssistantText,
+      expected.roleSource ?? 'unknown'
     ), true)) as
       { clicked?: boolean; reason?: string } | null
     if (!outcome?.clicked) {

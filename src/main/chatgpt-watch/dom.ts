@@ -1,32 +1,46 @@
+/**
+ * One authoritative DOM role resolver for Inspect, Prepare and Commit.
+ * Never infer roles from arbitrary page text or a numerical turn index.
+ */
+const NIGHTNOVA_MESSAGE_HELPERS = String.raw`
+    const readMessages = () => {
+      const direct = Array.from(document.querySelectorAll('[data-message-author-role]'))
+      const turns = direct.length ? [] :
+        Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
+      const source = direct.length ? 'message-author-role' : turns.length ? 'turn-role' : 'unknown'
+      const nodes = direct.length ? direct : turns
+      const roleOf = (el) => {
+        const explicit = el.getAttribute('data-message-author-role') ||
+          el.getAttribute('data-author-role') || el.getAttribute('data-role') ||
+          el.getAttribute('data-turn-role')
+        if (explicit === 'assistant' || explicit === 'user') return explicit
+        const testId = el.getAttribute('data-testid') || ''
+        if (/^conversation-turn-assistant(?:-|$)/i.test(testId)) return 'assistant'
+        if (/^conversation-turn-user(?:-|$)/i.test(testId)) return 'user'
+        // Some Work pages expose the role on the *inner* turn wrapper.
+        const child = el.querySelector?.('[data-author-role], [data-message-author-role], [data-turn-role]')
+        const nested = child?.getAttribute('data-message-author-role') ||
+          child?.getAttribute('data-author-role') || child?.getAttribute('data-turn-role')
+        return nested === 'assistant' || nested === 'user' ? nested : 'unknown'
+      }
+      const resolved = nodes.filter(el => roleOf(el) !== 'unknown')
+      const assistant = resolved.filter(el => roleOf(el) === 'assistant')
+      const user = resolved.filter(el => roleOf(el) === 'user')
+      const lastRole = resolved.length ? roleOf(resolved[resolved.length - 1]) : 'unknown'
+      return { source, nodes: resolved, assistant, user, lastRole }
+    }
+`;
+
 // Scripts executed ONLY after main has verified the host is an explicitly
 // armed chatgpt.com conversation. The scripts read the last assistant message
 // transiently and never fetch cookies, tokens or full chat transcripts.
 export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
+  ${NIGHTNOVA_MESSAGE_HELPERS}
   const visible = (el) => !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)
-  const byOriginal = Array.from(document.querySelectorAll('[data-message-author-role]'))
-  const byTurn = byOriginal.length ? [] : Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
-  const nodes = byOriginal.length ? byOriginal : byTurn
-  const roleOf = (el) => {
-    const direct = el.getAttribute('data-message-author-role') ||
-      el.getAttribute('data-author-role') || el.getAttribute('data-role')
-    if (direct === 'assistant' || direct === 'user') return direct
-    const dataId = el.getAttribute('data-testid') || ''
-    if (/conversation-turn-assistant/i.test(dataId)) return 'assistant'
-    if (/conversation-turn-user/i.test(dataId)) return 'user'
-    return 'unknown'
-  }
-  const assistantNodes = nodes.filter(el => roleOf(el) === 'assistant')
-  const userNodes = nodes.filter(el => roleOf(el) === 'user')
-  const last = assistantNodes[assistantNodes.length - 1]
-  // Ignore transient tool/status wrappers and nodes with no recognized role.
-  // The final recognized assistant/user message determines the safe state.
-  const lastNode = nodes.filter(el => {
-    const role = roleOf(el)
-    return role === 'assistant' || role === 'user'
-  }).at(-1)
-  const lastRole = lastNode ? roleOf(lastNode) : 'unknown'
-  const roleSource = byOriginal.length ? 'message-author-role' :
-    byTurn.length ? 'turn-role' : 'unknown'
+  const messages = readMessages()
+  const last = messages.assistant[messages.assistant.length - 1]
+  const lastRole = messages.lastRole
+  const roleSource = messages.source
   const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
   const draftText = editor ? (editor.value ?? editor.innerText ?? editor.textContent ?? '') : ''
   const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
@@ -37,8 +51,8 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     .filter(visible).slice(-3).map(el => (el.innerText ?? '').slice(0, 180)).join(' ')
   return {
     url: location.href,
-    assistantCount: assistantNodes.length,
-    userCount: userNodes.length,
+    assistantCount: messages.assistant.length,
+    userCount: messages.user.length,
     lastMessageRole: lastRole === 'user' || lastRole === 'assistant' ? lastRole : 'unknown',
     roleSource,
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
@@ -75,8 +89,9 @@ export function chatWatchPrepareScript(
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     if (!editor || (stop && !stop.disabled)) return { prepared: false, reason: 'busy-or-missing-editor' }
-    const messages = document.querySelectorAll('[data-message-author-role]')
-    if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+    ${NIGHTNOVA_MESSAGE_HELPERS}
+    const before = readMessages()
+    if (!before.nodes.length || before.lastRole !== 'assistant') {
       return { prepared: false, reason: 'no-completed-assistant-response' }
     }
     // Authentication/verification and offline transitions always block
@@ -113,9 +128,11 @@ export function chatWatchPrepareScript(
     }
     const actual = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (actual !== message.trim()) return { prepared: false, reason: 'draft-verification-failed' }
-    const finalMessages = document.querySelectorAll('[data-message-author-role]')
-    if (!finalMessages.length ||
-        finalMessages[finalMessages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+    const finalMessages = readMessages()
+    if (finalMessages.lastRole !== 'assistant' ||
+        finalMessages.source !== before.source ||
+        finalMessages.assistant.length !== before.assistant.length ||
+        finalMessages.user.length !== before.user.length) {
       return { prepared: false, reason: 'conversation-changed-during-prepare' }
     }
     // A per-attempt identifier protects against an unrelated identical draft.
@@ -129,7 +146,8 @@ export function chatWatchPrepareScript(
 // Phase 2: a synchronous, last-moment state check and one Send click.
 export function chatWatchCommitScript(
   prompt: string, expectedUrl: string, operationId: string, deadlineAt: number,
-  expectedAssistantCount: number, expectedUserCount: number, expectedAssistantText: string
+  expectedAssistantCount: number, expectedUserCount: number, expectedAssistantText: string,
+  expectedRoleSource: 'message-author-role' | 'turn-role' | 'unknown' = 'message-author-role'
 ): string {
   return String.raw`(() => {
     const message = ${JSON.stringify(prompt)}
@@ -145,22 +163,20 @@ export function chatWatchCommitScript(
     }
     const editor = document.querySelector('#prompt-textarea, [data-testid="composer-text-input"], [contenteditable="true"][role="textbox"]')
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
-    const messages = document.querySelectorAll('[data-message-author-role]')
-    if (!messages.length || messages[messages.length - 1].getAttribute('data-message-author-role') !== 'assistant') {
+    ${NIGHTNOVA_MESSAGE_HELPERS}
+    const messages = readMessages()
+    if (messages.lastRole !== 'assistant') {
       return { clicked: false, reason: 'conversation-changed' }
     }
-    if (messages.length !== ${JSON.stringify(expectedAssistantCount + expectedUserCount)}) {
-      return { clicked: false, reason: 'conversation-message-count-changed' }
+    if (messages.source !== ${JSON.stringify(expectedRoleSource)} ||
+        messages.nodes.length !== ${JSON.stringify(expectedAssistantCount + expectedUserCount)}) {
+      return { clicked: false, reason: 'conversation-selector-changed' }
     }
-    const assistant = Array.from(messages).filter(node =>
-      node.getAttribute('data-message-author-role') === 'assistant')
-    const users = Array.from(messages).filter(node =>
-      node.getAttribute('data-message-author-role') === 'user')
-    if (assistant.length !== ${JSON.stringify(expectedAssistantCount)} ||
-        users.length !== ${JSON.stringify(expectedUserCount)}) {
+    if (messages.assistant.length !== ${JSON.stringify(expectedAssistantCount)} ||
+        messages.user.length !== ${JSON.stringify(expectedUserCount)}) {
       return { clicked: false, reason: 'conversation-role-count-changed' }
     }
-    const lastAssistant = assistant[assistant.length - 1]
+    const lastAssistant = messages.assistant[messages.assistant.length - 1]
     if (!lastAssistant ||
         String(lastAssistant.innerText || lastAssistant.textContent || '').slice(-4000) !==
           ${JSON.stringify(expectedAssistantText.slice(-4000))}) {
