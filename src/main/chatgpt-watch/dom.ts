@@ -150,7 +150,7 @@ export function chatWatchPrepareScript(
 export function chatWatchCommitScript(
   prompt: string, expectedUrl: string, operationId: string, deadlineAt: number,
   expectedAssistantCount: number, expectedUserCount: number, expectedAssistantText: string,
-  expectedRoleSource: 'message-author-role' | 'turn-role' | 'unknown' = 'message-author-role'
+  expectedRoleSource: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'unknown' = 'message-author-role'
 ): string {
   return String.raw`(() => {
     const message = ${JSON.stringify(prompt)}
