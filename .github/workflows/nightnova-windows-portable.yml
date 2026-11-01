@@ -2,6 +2,11 @@ name: NightNova Windows Portable Manual Release
 # Only an explicit operator request may produce a Windows standalone EXE.
 # No push, schedule or pull_request triggers.
 on:
+  push:
+    branches:
+      - nightnova-portable-acceptance-20261102-one-shot
+    paths:
+      - .github/workflows/nightnova-windows-portable.yml
   workflow_dispatch:
 
 permissions:
