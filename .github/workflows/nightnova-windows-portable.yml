@@ -1,0 +1,62 @@
+name: NightNova Windows Portable Manual Release
+# Only an explicit operator request may produce a Windows standalone EXE.
+# No push, schedule or pull_request triggers.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightnova-portable-once
+  cancel-in-progress: true
+
+jobs:
+  windows-portable:
+    name: Windows x64 no-install portable executable
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: 'false'
+    steps:
+      - name: Checkout NightNova
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install locked dependencies once
+        shell: pwsh
+        run: bun ci
+      - name: Confirm Windows Electron
+        shell: pwsh
+        run: |
+          if (!(Test-Path "node_modules/electron/dist/electron.exe")) {
+            throw "Electron Windows binary missing"
+          }
+      - name: TypeScript integration check
+        run: npm run typecheck
+      - name: Focused NightNova tests including portable profile
+        run: npx --no-install vitest run src/main/portable-profile.test.ts src/main/nightnova src/main/acp-detect.test.ts src/main/chatgpt-watch src/main/auth-support.test.ts
+      - name: Build standalone Windows portable EXE
+        run: npm run package:win:portable
+      - name: Verify PE signature and write SHA-256 manifest
+        run: npm run release:manifest:portable
+      - name: Upload exactly one portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: NightNova-Windows-x64-Portable
+          path: |
+            release/NightNova-*-portable.exe
+            release/NIGHTNOVA_PORTABLE_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

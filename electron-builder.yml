@@ -31,6 +31,13 @@ win:
         - x64
   icon: build/icon.ico
   artifactName: NightNova-${version}-setup.${ext}
+# Standalone no-installer target is selected with --win portable.
+# Its own filename avoids accidentally distributing the NSIS installer.
+portable:
+  artifactName: NightNova-${version}-portable.${ext}
+  requestExecutionLevel: user
+  # Each run gets its own temporary extraction directory to avoid collision.
+  unpackDirName: false
 nsis:
   oneClick: false
   perMachine: false

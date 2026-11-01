@@ -17,6 +17,7 @@ import { registerStorageIpc } from './ipc/storage-ipc'
 import { registerAcpIpc } from './ipc/acp-ipc'
 import { registerNightnovaIpc } from './nightnova/ipc'
 import { registerChatGptWatchIpc } from './chatgpt-watch/ipc'
+import { portableProfileDirectory } from './portable-profile'
 import { canGrantChatGptClipboardWrite, canGrantOpenAiStorageAccess, isOfficialOpenAiLoginUrl, summarizeOpenAiAuthResponse, summarizeOpenAiNetworkError, appendAuthDiagnostic, type AuthStatus } from '../shared/auth-support'
 import { registerTerminalIpc } from './ipc/terminal-ipc'
 import { registerDialogIpc } from './ipc/dialog-ipc'
@@ -98,9 +99,19 @@ app.userAgentFallback = app.userAgentFallback
 // upstream Rever Browser cookie jar; it may contain unrelated logins.
 // Legacy REVER_USER_DATA_DIR is accepted ONLY as an explicit dev/E2E override.
 app.setName('NightNova')
+// electron-builder sets PORTABLE_EXECUTABLE_DIR only for the portable EXE.
+// Keep portable logins, cookies and settings beside that EXE (including USB),
+// never inside its short-lived temporary unpack directory or AppData.
+const portableDataDir = portableProfileDirectory(
+  process.platform,
+  app.isPackaged,
+  process.env.PORTABLE_EXECUTABLE_DIR
+)
+if (portableDataDir) mkdirSync(portableDataDir, { recursive: true })
 app.setPath(
   'userData',
-  process.env.NIGHTNOVA_USER_DATA_DIR ||
+  portableDataDir ||
+    process.env.NIGHTNOVA_USER_DATA_DIR ||
     process.env.REVER_USER_DATA_DIR ||
     path.join(app.getPath('appData'), 'nightnova')
 )
