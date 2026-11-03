@@ -1,15 +1,8 @@
 name: NightNova Windows Portable Manual Release
 # Only an explicit operator request may produce a Windows standalone EXE.
-# No push triggers on main; this one-shot isolated branch is an authorized exception.
-# Retry: DOM inspection test fixture fixed; previous run produced no EXE.
+# No push, schedule or pull_request triggers.
 on:
   workflow_dispatch:
-  # One-shot operator-authorized portable build on this isolated branch ONLY.
-  push:
-    branches:
-      - nightnova-portable-acceptance-20261104-one-shot
-    paths:
-      - .github/workflows/nightnova-windows-portable.yml
 
 permissions:
   contents: read
@@ -65,5 +58,5 @@ jobs:
             release/NightNova-*-portable.exe
             release/NIGHTNOVA_PORTABLE_MANIFEST.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
           compression-level: 0
