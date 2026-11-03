@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { chatWatchCommitScript, chatWatchPrepareScript } from './dom'
+import { CHAT_WATCH_INSPECT_SCRIPT, chatWatchCommitScript, chatWatchPrepareScript } from './dom'
 
 const url = 'https://chatgpt.com/c/12345678-abcd-1234-efab-123456789012'
 
@@ -14,6 +14,8 @@ interface MockDomOptions {
   authVisible?: boolean
   online?: boolean
   useTurnWrappers?: boolean
+  unresolvedLatest?: boolean
+  connectionBanner?: boolean
 }
 
 function mockDom(options: MockDomOptions = {}) {
@@ -57,6 +59,9 @@ function mockDom(options: MockDomOptions = {}) {
       return null
     },
     querySelectorAll: (selector:string) => {
+      if (selector.includes('[role="alert"]')) return options.connectionBanner ? [
+        { innerText: 'Connection lost', offsetWidth: 80, offsetHeight: 20 }
+      ] : []
       if (selector === '[data-message-author-role]' && options.useTurnWrappers) return []
       if (selector === '[data-testid^="conversation-turn-"]' && !options.useTurnWrappers) return []
       return [
@@ -66,7 +71,12 @@ function mockDom(options: MockDomOptions = {}) {
         { getAttribute:(n:string)=>options.useTurnWrappers
           ? n==='data-testid' ? 'conversation-turn-assistant' : null
           : n==='data-message-author-role' ? (options.role ?? 'assistant') : null,
-          innerText:'prior assistant', textContent:'prior assistant' }
+          innerText:'prior assistant', textContent:'prior assistant' },
+        ...(options.unresolvedLatest ? [{
+          getAttribute: (_n: string) => null,
+          querySelector: (_n: string) => null,
+          innerText: 'pending user turn', textContent: 'pending user turn'
+        }] : [])
       ]
     },
     execCommand: (_command: string, _show: boolean, value: string) => {
@@ -79,7 +89,8 @@ function mockDom(options: MockDomOptions = {}) {
     document,
     location: {
       origin: options.origin ?? 'https://chatgpt.com',
-      pathname: options.pathname ?? '/c/12345678-abcd-1234-efab-123456789012'
+      pathname: options.pathname ?? '/c/12345678-abcd-1234-efab-123456789012',
+      href: (options.origin ?? 'https://chatgpt.com') + (options.pathname ?? '/c/12345678-abcd-1234-efab-123456789012')
     },
     URL,
     Date,
@@ -211,6 +222,28 @@ describe('thinking macro DOM send two-stage protocol', () => {
     expect(result.clicked).toBe(false)
     expect(result.reason).toBe('offline')
     expect(test.getClicks()).toBe(0)
+  })
+  it('reads the latest turn instead of trusting the last recognized assistant', async () => {
+    const test = mockDom({ useTurnWrappers: true, unresolvedLatest: true })
+    const inspection = runInNewContext(CHAT_WATCH_INSPECT_SCRIPT, test.context)
+    expect(inspection.lastMessageRole).toBe('unknown')
+    expect(inspection.unresolvedMessageCount).toBe(1)
+    const prepared = await runInNewContext(prepare('resume'), test.context)
+    expect(prepared.prepared).toBe(false)
+    expect(test.getClicks()).toBe(0)
+  })
+  it('blocks connection-disconnected toast on both draft preparation and final click', async () => {
+    const opts = { connectionBanner: false }
+    const test = mockDom(opts)
+    expect((await runInNewContext(prepare('resume'), test.context)).prepared).toBe(true)
+    opts.connectionBanner = true
+    const result = runInNewContext(commit('resume'), test.context)
+    expect(result.clicked).toBe(false)
+    expect(result.reason).toBe('disconnected-banner')
+    expect(test.getClicks()).toBe(0)
+    const other = mockDom({ connectionBanner: true })
+    const prep = await runInNewContext(prepare('resume'), other.context)
+    expect(prep.reason).toBe('disconnected-banner')
   })
   it('does not evaluate prompt content as JavaScript', async () => {
     const test = mockDom()

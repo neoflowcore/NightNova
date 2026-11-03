@@ -216,6 +216,8 @@ export class ChatGptConversationWatch {
     if (!sameConversation(value.url, guest.getURL())) throw new Error('대화 주소가 읽는 도중 변경됐습니다.')
     if (!Number.isSafeInteger(value.assistantCount) || !Number.isSafeInteger(value.userCount) ||
         typeof value.lastAssistantText !== 'string' ||
+        (value.unresolvedMessageCount !== undefined &&
+          (!Number.isSafeInteger(value.unresolvedMessageCount) || value.unresolvedMessageCount < 0)) ||
         !['assistant', 'user', 'unknown'].includes(value.lastMessageRole ?? '')) {
       throw new Error('ChatGPT 화면 구조가 변경됐습니다.')
     }
@@ -223,9 +225,9 @@ export class ChatGptConversationWatch {
   }
 
   private updatePage(observation: ChatWatchDomObservation): void {
-    const { assistantCount, userCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource } = observation
+    const { assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource } = observation
     this.stateData.page = {
-      assistantCount, userCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource
+      assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource
     }
     this.stateData.lastCheckAt = Date.now()
     this.notify()
@@ -259,6 +261,9 @@ export class ChatGptConversationWatch {
     }
     if ((page.needsLogin || page.challenge) || (!page.assistantCount && !this.stateData.config.readOnly)) {
       throw new Error('로그인된 ChatGPT 대화에서 AI 답변이 한 번 이상 표시돼야 합니다. 답변 완료 후 상태 확인을 눌러주세요.')
+    }
+    if ((page.unresolvedMessageCount ?? 0) > 0 && !this.stateData.config.readOnly) {
+      throw new Error('확인되지 않은 최신 대화 메시지가 있어 실제 자동 전송을 시작할 수 없습니다. 모의실행으로 화면을 진단하세요.')
     }
     if (page.lastMessageRole !== 'assistant' && page.lastMessageRole !== 'user' && !this.stateData.config.readOnly) {
       throw new Error('마지막 메시지 역할을 판독하지 못했습니다. 먼저 모의실행으로 테스트하세요. 실제 자동 전송은 차단됩니다.')
@@ -475,6 +480,7 @@ export class ChatGptConversationWatch {
     if (!this.isArmed(epoch, wc.id)) return
     const fresh = await this.inspectGuest(this.activeGuest())
     if (!this.isArmed(epoch, wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
+        (fresh.unresolvedMessageCount ?? 0) > 0 ||
         fresh.userCount !== expected.userCount || fresh.lastMessageRole !== 'assistant' ||
         fresh.generating || fresh.hasDraft || fresh.needsLogin || fresh.challenge ||
         !fresh.online || fresh.connectionProblem || !fresh.composerReady) return
@@ -496,6 +502,7 @@ export class ChatGptConversationWatch {
     // back to needs-human when the operator has already stopped it.
     if (!this.isArmed(epoch, wc.id)) return
     if (!reviewed.hasDraft || reviewed.connectionProblem || !reviewed.online ||
+        (reviewed.unresolvedMessageCount ?? 0) > 0 ||
         reviewed.lastMessageRole !== 'assistant' ||
         reviewed.generating || reviewed.userCount !== expected.userCount ||
         fingerprint(reviewed) !== fingerprint(expected)) {

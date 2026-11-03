@@ -52,7 +52,8 @@ export interface ChatWatchDashboard {
 export function isSupportedChatGptConversationUrl(url: string): boolean {
   try {
     const value = new URL(url)
-    return value.protocol === 'https:' &&
+    return value.protocol === 'https:' && !value.port &&
+      !value.username && !value.password &&
       (value.hostname === 'chatgpt.com' || value.hostname === 'chat.openai.com') &&
       /(?:^|\/)c\/[a-zA-Z0-9-]{12,}(?:\/|$)/.test(value.pathname)
   } catch {
@@ -166,6 +167,8 @@ export interface ChatWatchLog {
 export interface ChatWatchPageStatus {
   assistantCount: number
   userCount: number
+  /** A visible turn whose role cannot be verified must never authorize Send. */
+  unresolvedMessageCount?: number
   generating: boolean
   online: boolean
   composerReady: boolean

@@ -52,6 +52,21 @@ describe('ChatGPT supervisor configurable stop categories', () => {
     expect(decideChatWatch({...base,composerReady:false}, {...context,readOnly:true}).type).toBe('wait')
     expect(decideChatWatch({...base,needsLogin:true}, {...context,readOnly:true}).type).toBe('needs-human')
   })
+  it('refuses live Send if a newer visible turn has no recognized role', () => {
+    const ambiguous = { ...base, unresolvedMessageCount: 1 }
+    expect(decideChatWatch(ambiguous, context).type).toBe('needs-human')
+    expect(decideChatWatch(ambiguous, {...context, readOnly: true}).type).toBe('wait')
+  })
+  it('treats card data and transfers as human-gated payment requests', () => {
+    expect(detectChatWatchActionRequests('카드 번호를 입력해 주세요')).toContain('payment')
+    expect(detectChatWatchActionRequests('Please provide credit card details')).toContain('payment')
+    expect(detectChatWatchActionRequests('계좌 이체를 진행해 주세요')).toContain('payment')
+  })
+  it('rejects same-path conversation matching on an unexpected port or host', () => {
+    const pageUrl = 'https://chatgpt.com/c/12345678-abcd-1234-efab-123456789012'
+    expect(isChatGptConversation(pageUrl)).toBe(true)
+    expect(isChatGptConversation('https://chatgpt.com:444/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
+  })
   it('fails closed if the latest message role cannot be verified', () => {
     expect(decideChatWatch({ ...base, lastMessageRole: 'unknown' }, context).type).toBe('needs-human')
   })

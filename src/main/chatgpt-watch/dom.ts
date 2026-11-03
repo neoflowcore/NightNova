@@ -4,11 +4,12 @@
  */
 const NIGHTNOVA_MESSAGE_HELPERS = String.raw`
     const readMessages = () => {
-      const direct = Array.from(document.querySelectorAll('[data-message-author-role]'))
-      const turns = direct.length ? [] :
-        Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
-      const source = direct.length ? 'message-author-role' : turns.length ? 'turn-role' : 'unknown'
-      const nodes = direct.length ? direct : turns
+      // Prefer complete chronological turn wrappers. A recognized earlier
+      // assistant must not conceal a newer turn with an unknown role.
+      const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
+      const direct = turns.length ? [] : Array.from(document.querySelectorAll('[data-message-author-role]'))
+      const source = turns.length ? 'turn-role' : direct.length ? 'message-author-role' : 'unknown'
+      const nodes = turns.length ? turns : direct
       const roleOf = (el) => {
         const explicit = el.getAttribute('data-message-author-role') ||
           el.getAttribute('data-author-role') || el.getAttribute('data-role') ||
@@ -26,8 +27,9 @@ const NIGHTNOVA_MESSAGE_HELPERS = String.raw`
       const resolved = nodes.filter(el => roleOf(el) !== 'unknown')
       const assistant = resolved.filter(el => roleOf(el) === 'assistant')
       const user = resolved.filter(el => roleOf(el) === 'user')
-      const lastRole = resolved.length ? roleOf(resolved[resolved.length - 1]) : 'unknown'
-      return { source, nodes: resolved, assistant, user, lastRole }
+      const lastRole = nodes.length ? roleOf(nodes[nodes.length - 1]) : 'unknown'
+      return { source, nodes, assistant, user, lastRole,
+        unresolvedMessageCount: nodes.length - resolved.length }
     }
 `;
 
@@ -55,6 +57,7 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     url: location.href,
     assistantCount: messages.assistant.length,
     userCount: messages.user.length,
+    unresolvedMessageCount: messages.unresolvedMessageCount,
     lastMessageRole: lastRole === 'user' || lastRole === 'assistant' ? lastRole : 'unknown',
     roleSource,
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
@@ -94,7 +97,7 @@ export function chatWatchPrepareScript(
     if (!editor || (stop && !stop.disabled)) return { prepared: false, reason: 'busy-or-missing-editor' }
     ${NIGHTNOVA_MESSAGE_HELPERS}
     const before = readMessages()
-    if (!before.nodes.length || before.lastRole !== 'assistant') {
+    if (!before.nodes.length || before.unresolvedMessageCount > 0 || before.lastRole !== 'assistant') {
       return { prepared: false, reason: 'no-completed-assistant-response' }
     }
     // Authentication/verification and offline transitions always block
@@ -106,6 +109,14 @@ export function chatWatchPrepareScript(
       return { prepared: false, reason: 'authentication-required' }
     }
     if (!navigator.onLine) return { prepared: false, reason: 'offline' }
+    const alerts = Array.from(document.querySelectorAll(
+      '[role="alert"], [data-sonner-toast], [data-testid="toast"], [data-testid="error-message"]'
+    )).filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects?.().length))
+      .slice(-5).map(el => (el.innerText || el.textContent || '').slice(0, 180)).join(' ')
+    if (/연결이\s*해제되었습니다|네트워크\s*(?:연결|오류)|연결을\s*잃었습니다|connection\s*(?:lost|interrupted)|network\s*error|you\s*are\s*offline|failed\s*to\s*fetch|connection\s*disconnected/i.test(alerts)) {
+      return { prepared: false, reason: 'disconnected-banner' }
+    }
+
     const current = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (current) return { prepared: false, reason: 'existing-user-draft' }
     editor.focus()
@@ -132,7 +143,8 @@ export function chatWatchPrepareScript(
     const actual = String(editor.value ?? editor.innerText ?? editor.textContent ?? '').trim()
     if (actual !== message.trim()) return { prepared: false, reason: 'draft-verification-failed' }
     const finalMessages = readMessages()
-    if (finalMessages.lastRole !== 'assistant' ||
+    if (finalMessages.unresolvedMessageCount > 0 ||
+        finalMessages.lastRole !== 'assistant' ||
         finalMessages.source !== before.source ||
         finalMessages.assistant.length !== before.assistant.length ||
         finalMessages.user.length !== before.user.length) {
@@ -168,7 +180,7 @@ export function chatWatchCommitScript(
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     ${NIGHTNOVA_MESSAGE_HELPERS}
     const messages = readMessages()
-    if (messages.lastRole !== 'assistant') {
+    if (messages.unresolvedMessageCount > 0 || messages.lastRole !== 'assistant') {
       return { clicked: false, reason: 'conversation-changed' }
     }
     if (messages.source !== ${JSON.stringify(expectedRoleSource)} ||
@@ -195,6 +207,14 @@ export function chatWatchCommitScript(
       return { clicked: false, reason: 'authentication-required' }
     }
     if (!navigator.onLine) return { clicked: false, reason: 'offline' }
+    const alerts = Array.from(document.querySelectorAll(
+      '[role="alert"], [data-sonner-toast], [data-testid="toast"], [data-testid="error-message"]'
+    )).filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects?.().length))
+      .slice(-5).map(el => (el.innerText || el.textContent || '').slice(0, 180)).join(' ')
+    if (/연결이\s*해제되었습니다|네트워크\s*(?:연결|오류)|연결을\s*잃었습니다|connection\s*(?:lost|interrupted)|network\s*error|you\s*are\s*offline|failed\s*to\s*fetch|connection\s*disconnected/i.test(alerts)) {
+      return { clicked: false, reason: 'disconnected-banner' }
+    }
+
     if (editor.getAttribute('data-nightnova-draft-token') !== operationId) {
       return { clicked: false, reason: 'unverified-draft-origin' }
     }

@@ -8,8 +8,8 @@ export function sameConversation(a: string, b: string): boolean {
   try {
     const first = new URL(a)
     const second = new URL(b)
-    return first.hostname === second.hostname &&
-      first.protocol === second.protocol &&
+    return isChatGptConversation(a) && isChatGptConversation(b) &&
+      first.origin === second.origin &&
       first.pathname.replace(/\/$/, '') === second.pathname.replace(/\/$/, '')
   } catch {
     return false
@@ -31,7 +31,10 @@ export function detectChatWatchActionRequests(text: string): ChatWatchActionCate
   }
   add('payment',
     /(?:결제|구매|유료\s*결제|과금\s*승인).{0,52}(?:필요|진행|완료|해\s*주|승인|요청)/i.test(tail) ||
-    /(?:pay|purchase|payment|billing).{0,55}(?:approve|confirm|required|needed|complete)/i.test(tail))
+    /(?:pay|purchase|payment|billing).{0,55}(?:approve|confirm|required|needed|complete)/i.test(tail) ||
+    /(?:카드\s*(?:번호|정보)|계좌\s*(?:이체|입금)|송금).{0,45}(?:입력|제공|확인|진행|해\s*주|필요|요청)/i.test(tail) ||
+    /(?:credit\s*card|card\s*details|bank\s*transfer|wire\s*transfer).{0,60}(?:enter|provide|confirm|approve|needed|required|complete)/i.test(tail) ||
+    /(?:enter|provide|confirm|approve).{0,60}(?:credit\s*card|card\s*details|bank\s*transfer|wire\s*transfer)/i.test(tail))
   add('login',
     /(?:로그인|인증|2단계\s*인증|계정\s*연결).{0,60}(?:필요|해\s*주|해\s*야|진행|요청)/i.test(tail) ||
     /(?:please|you\s+need\s+to|requires?)\s+(?:manually\s+)?(?:log\s*in|sign\s*in|authenticate)/i.test(tail))
@@ -111,6 +114,11 @@ export function decideChatWatch(
   if (!page.assistantCount) return ctx.readOnly
     ? { type: 'wait', reason: '모의실행: ChatGPT 응답 DOM 구조를 아직 인식하지 못했습니다. 전송은 차단한 채 다시 검사합니다.' }
     : { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
+  if ((page.unresolvedMessageCount ?? 0) > 0) {
+    return ctx.readOnly
+      ? { type: 'wait', reason: '모의실행: 역할을 확인하지 못한 메시지가 있어 전송하지 않고 관찰합니다.' }
+      : { type: 'needs-human', reason: '역할을 확인하지 못한 메시지가 있습니다. 기존 답변을 기준으로 자동 전송하지 않습니다.' }
+  }
   if (page.generating) {
     // Extended reasoning is not a completed idle response; never submit while generating.
     return age >= generationStallThreshold

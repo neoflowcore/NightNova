@@ -84,7 +84,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
   }
   return <section className="nightnova-wb-section">
     <h4>NightNova · 생각하는 매크로</h4>
-    {working && <p role="status" className="nightnova-wb-note">{activeOperation} 처리 중... 잠시 뒤 결과를 표시합니다.</p>}
+    {working && <p role="status" className="nightnova-wb-note">{activeOperation} 처리 중... 실패하면 아래 오류에 원인을 표시합니다.</p>}
     {error && <p id="nightnova-watch-error" role="alert" className="nightnova-error" style={{position:'sticky',top:0,zIndex:5,padding:'10px',background:'var(--panel-bg, #2b1414)'}}>{error}</p>}
     <p className="nightnova-wb-note">긴급 중단 단축키: <strong>Alt+Shift+X</strong> · ChatGPT 탭에서 입력 중이어도 동작합니다.</p>
     <p className="nightnova-wb-note" role="status">
@@ -117,7 +117,9 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
           · 실제 전송 {snap.lastRun.sentCount}회 · 모의 판단 {snap.lastRun.dryRunReadyCount}회
           · {snap.lastRun.reason}
         </p>}
-        {snap?.page && <p className="nightnova-wb-note">판독 방식: {snap.page.roleSource ?? '이전 버전'} · AI {snap.page.assistantCount}개 / 사용자 {snap.page.userCount}개</p>}
+        {snap?.page && <p className="nightnova-wb-note">판독 방식: {snap.page.roleSource ?? '이전 버전'} · AI {snap.page.assistantCount}개 / 사용자 {snap.page.userCount}개 · 미확인 {(snap.page.unresolvedMessageCount ?? 0)}개</p>}
+        {snap?.page && (snap.page.unresolvedMessageCount ?? 0) > 0 && <p role="alert" className="nightnova-error">최근 대화 메시지 역할이 불명확합니다. 안전을 위해 실제 자동 전송을 중단하며, 상태 확인으로 진단하세요.</p>}
+        {snap?.page?.connectionProblem && <p role="alert" className="nightnova-error">ChatGPT 화면에 연결 해제 또는 네트워크 오류가 표시됐습니다. 실제 자동 전송을 중단합니다.</p>}
         {snap?.status === 'watching' && snap.startedAt !== null && <p className="nightnova-wb-note">야간 감독 남은 시간: {formatWatchDuration(chatWatchRunRemainingSeconds(clock, snap.startedAt, snap.config.maxRunSeconds) ?? 0)}</p>}
         {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
@@ -134,7 +136,7 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
           <button type="button" onClick={() => useTabsStore.getState().selectTab(t.id)}>탭 보기</button>
           <button type="button" onClick={() => setSettingsTab(id)}>설정 선택</button>
           <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.configure(id, {}))}>설정 준비</button>
-          <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id), '감독 시작 및 화면 판독')}>시작</button>
+          <button disabled={working || snap?.status === 'watching'} onClick={() => void run(() => window.rev.chatWatch.start(id), '감독 시작 및 화면 판독')}>{working && activeOperation === '감독 시작 및 화면 판독' ? '시작 진단 중…' : '시작'}</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.pause(id))}>일시정지</button>
           <button disabled={working} onClick={() => void run(() => window.rev.chatWatch.inspect(id))}>상태 확인</button>
           <button disabled={working || snap?.status !== 'watching'} onClick={() => void run(() => window.rev.chatWatch.checkNow(id))}>지금 판단</button>
