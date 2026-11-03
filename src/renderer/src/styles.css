@@ -763,3 +763,21 @@ body.resizing webview { pointer-events: none; }
 .detail-drawer-splitter:hover {
   background: rgba(74, 143, 255, 0.4);
 }
+
+/* Non-invasive help on official OAuth pages. Never inject into provider DOM. */
+.nightnova-login-help {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.nightnova-login-help-copy { flex: 1 1 280px; min-width: 0; }
+.nightnova-login-help-copy strong { color: var(--text); }
+.nightnova-login-restart { flex-shrink: 0; }
+.nightnova-login-error { flex-basis: 100%; color: var(--status-error); }

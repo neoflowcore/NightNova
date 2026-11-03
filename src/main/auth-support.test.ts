@@ -7,6 +7,7 @@ import {
   summarizeOpenAiNetworkError,
   isOpenAiAuthenticationFlowUrl,
   isKnownIdentityProviderUrl,
+  nightNovaLoginPage,
   shouldAvoidAutomaticCdp,
   appendAuthDiagnostic,
   OPENAI_LOGIN_ENTRY_URL
@@ -111,6 +112,18 @@ describe('OpenAI login compatibility and privacy boundaries', () => {
     expect(isOpenAiAuthenticationFlowUrl('https://login.microsoftonline.com/common/oauth2')).toBe(true)
     expect(isOpenAiAuthenticationFlowUrl('https://chatgpt.com/c/conversation')).toBe(false)
     expect(isOpenAiAuthenticationFlowUrl('https://accounts.google.com.evil.test')).toBe(false)
+  })
+  it('offers login recovery controls only for trusted authentication routes', () => {
+    expect(nightNovaLoginPage('https://accounts.google.com/o/oauth2/v2/auth?state=secret')).toBe('google')
+    expect(nightNovaLoginPage('https://auth.openai.com/authorize')).toBe('openai')
+    expect(nightNovaLoginPage('https://chatgpt.com/auth/login')).toBe('openai')
+    expect(nightNovaLoginPage('https://appleid.apple.com/auth/authorize')).toBe('apple')
+    expect(nightNovaLoginPage('https://login.microsoftonline.com/common/oauth2')).toBe('microsoft')
+    expect(nightNovaLoginPage('https://chatgpt.com/c/conversation')).toBeNull()
+    expect(nightNovaLoginPage('https://accounts.google.com.evil.example/auth')).toBeNull()
+    expect(nightNovaLoginPage('http://accounts.google.com/')).toBeNull()
+    expect(nightNovaLoginPage('https://accounts.google.com:444/login')).toBeNull()
+    expect(nightNovaLoginPage('https://google.com/login')).toBeNull()
   })
   it('keeps only bounded safe diagnostic fields, even after many errors', () => {
     const events = Array.from({length:42},(_,i) => summarizeOpenAiNetworkError({

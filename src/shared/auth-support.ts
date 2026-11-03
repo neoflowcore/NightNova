@@ -38,6 +38,19 @@ export function isOpenAiAuthenticationFlowUrl(value: string): boolean {
   }
 }
 
+
+/** UI hint only. Never reads passwords, clicks OAuth buttons or changes sign-in policy.
+ * Unknown sites must not inherit first-party login affordances. */
+export type NightNovaLoginPage = 'openai' | 'google' | 'apple' | 'microsoft' | null
+export function nightNovaLoginPage(value: string): NightNovaLoginPage {
+  if (!isOpenAiAuthenticationFlowUrl(value)) return null
+  const host = new URL(value).hostname
+  if (host === 'accounts.google.com') return 'google'
+  if (host === 'appleid.apple.com') return 'apple'
+  if (host === 'login.microsoftonline.com') return 'microsoft'
+  return 'openai'
+}
+
 const LOGIN_HOSTS = new Set([
   'auth.openai.com', 'chatgpt.com', 'chat.openai.com', 'openai.com'
 ])

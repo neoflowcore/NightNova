@@ -38,7 +38,7 @@ import { useNightnovaSplitStore, type NightnovaSplitMode } from '@/stores/split-
 import { originFromUrl, useWebviewThemeStore, type WebviewTheme } from '@/stores/webview-theme'
 import { handleAgentRequest } from '@/workflows/core/agent-bridge'
 import { shouldRotateWatchedTab } from '../../shared/chatgpt-watch'
-import { isOfficialOpenAiLoginUrl, OPENAI_LOGIN_ENTRY_URL, type AuthStatus } from '../../shared/auth-support'
+import { isOfficialOpenAiLoginUrl, nightNovaLoginPage, OPENAI_LOGIN_ENTRY_URL, type AuthStatus } from '../../shared/auth-support'
 
 type PanelId = 'traffic' | 'apimap' | 'console' | 'exceptions' | 'websocket' | 'repeater' | 'storage' | 'history' | 'workflows'
 
@@ -61,7 +61,9 @@ function App() {
   const [watchDashboard, setWatchDashboard] = useState<import('../../shared/chatgpt-watch').ChatWatchDashboard | null>(null)
   const [authDiagnostics,setAuthDiagnostics]=useState<AuthStatus|null>(null)
   const [authBusy,setAuthBusy]=useState(false)
-  useEffect(() => {setAuthDiagnostics(null)},[activeTab?.id])
+  const [authRestartError, setAuthRestartError] = useState('')
+  const authLoginPage = activeTab ? nightNovaLoginPage(activeTab.url) : null
+  useEffect(() => {setAuthDiagnostics(null); setAuthRestartError('')},[activeTab?.id])
   const lastOperatorActivityAt = useRef(0)
   useEffect(() => {
     const markActivity = (): void => { lastOperatorActivityAt.current = Date.now() }
@@ -829,6 +831,51 @@ function App() {
               </button>
             </div>
           </form>
+          {browserMode === 'embedded' && activeTab && authLoginPage && (
+            <section className="nightnova-login-help" role="region" aria-label="NightNova 로그인 도움말">
+              <span className="nightnova-login-help-copy">
+                {authLoginPage === 'google' ? (
+                  <>
+                    <strong>Google 보안 키 창이 나타났나요?</strong>
+                    {' '}Windows 보안창의 <strong>취소</strong>를 누른 뒤 Google에서
+                    {' '}<strong>다른 방법 시도</strong>를 선택하세요.
+                    비밀번호나 휴대전화 인증은 Google 계정에서 제공하는 경우에만 사용할 수 있습니다.
+                  </>
+                ) : (
+                  <>로그인은 계정 제공자의 공식 인증 화면에서 직접 완료하세요. 인증이 막혔다면 로그인 첫 화면으로 돌아갈 수 있습니다.</>
+                )}
+              </span>
+              <button type="button" className="toolbar-btn nightnova-login-restart"
+                disabled={authBusy}
+                title="현재 NightNova 프로필의 쿠키·비밀번호를 삭제하지 않고 ChatGPT 로그인 첫 화면으로 이동합니다."
+                onClick={() => {
+                  const tabId = activeTab.id
+                  const webContentsId = activeTab.webContentsId
+                  setAuthRestartError('')
+                  setAuthBusy(true)
+                  // Changing the sign-in route must not leave a watched tab armed.
+                  void window.rev.chatWatch.stopAll().then(() => {
+                    const current = useTabsStore.getState()
+                    const original = current.tabs.find(t => t.id === tabId)
+                    if (!original || current.activeId !== tabId ||
+                        original.webContentsId !== webContentsId ||
+                        !nightNovaLoginPage(original.url)) {
+                      throw new Error('로그인 탭이 변경됐습니다. 다시 선택한 후 실행하세요.')
+                    }
+                    const webview = tabRefs.current.get(tabId)
+                    if (!webview) throw new Error('로그인 탭이 준비되지 않았습니다.')
+                    // Navigation only: no token copying, cookie clearing or
+                    // automated clicks in Google's security-sensitive page.
+                    webview.loadURL(OPENAI_LOGIN_ENTRY_URL)
+                  }).catch(error => {
+                    setAuthRestartError(error instanceof Error ? error.message : String(error))
+                  }).finally(() => setAuthBusy(false))
+                }}>
+                {authBusy ? '이동 중…' : 'ChatGPT 로그인 처음부터'}
+              </button>
+              {authRestartError && <span role="alert" className="nightnova-login-error">{authRestartError}</span>}
+            </section>
+          )}
           {browserMode === 'embedded' && <BookmarkBar />}
           {/* paddingBottom reserves the chip bar's strip so the webview ends
               above it instead of being covered by it. The bar and the slide-up
