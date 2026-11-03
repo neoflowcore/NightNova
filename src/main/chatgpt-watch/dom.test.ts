@@ -29,6 +29,7 @@ function mockDom(options: MockDomOptions = {}) {
     isConnected: boolean
     setAttribute: (k:string,v:string)=>void
     getAttribute: (k:string)=>string|null
+    hasAttribute: (k:string)=>boolean
     removeAttribute: (k:string)=>void
   } = {
     isContentEditable: true,
@@ -38,6 +39,7 @@ function mockDom(options: MockDomOptions = {}) {
     isConnected: true,
     setAttribute:(k,v)=>{attrs.set(k,v)},
     getAttribute:k=>attrs.get(k)??null,
+    hasAttribute:k=>attrs.has(k),
     removeAttribute:k=>{attrs.delete(k)}
   }
   const send = {
