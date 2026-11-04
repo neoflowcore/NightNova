@@ -16,6 +16,7 @@ interface MockDomOptions {
   useTurnWrappers?: boolean
   unresolvedLatest?: boolean
   connectionBanner?: boolean
+  newAppShell?: boolean
 }
 
 function mockDom(options: MockDomOptions = {}) {
@@ -52,6 +53,7 @@ function mockDom(options: MockDomOptions = {}) {
   const stop = { disabled: false }
   const document = {
     querySelector: (selector: string) => {
+      if (selector.includes('[data-app-shell-main-content-layout]')) return options.newAppShell ? { isConnected: true } : null
       if (selector.includes('#prompt-textarea')) return editor
       if (selector.includes('stop-button')) return options.generating ? stop : null
       if (selector.includes('send-button')) return options.sendAvailable === false ? null : send
@@ -64,6 +66,22 @@ function mockDom(options: MockDomOptions = {}) {
       if (selector.includes('[role="alert"]')) return options.connectionBanner ? [
         { innerText: 'Connection lost', offsetWidth: 80, offsetHeight: 20 }
       ] : []
+      if (options.newAppShell) {
+        if (selector === '[data-user-message-bubble="true"], [data-markdown-text-style="assistant-message"]') return [
+          {
+            getAttribute: (name:string) => name === 'data-user-message-bubble' ? 'true' : null,
+            innerText: 'visible user', textContent: 'visible user'
+          },
+          {
+            getAttribute: (name:string) => name === 'data-markdown-text-style' ? 'assistant-message' : null,
+            innerText: 'visible assistant', textContent: 'visible assistant'
+          }
+        ]
+        return []
+      }
+      if (selector === '[data-test-id^="conversation-turn-"]' || selector === '[data-turn-key]' ||
+          selector === '[data-author-role], [data-conversation-role], [data-turn-role], [data-message-author]' ||
+          selector === '[data-user-message-bubble="true"], [data-markdown-text-style="assistant-message"]') return []
       if (selector === '[data-message-author-role]' && options.useTurnWrappers) return []
       if (selector === '[data-testid^="conversation-turn-"]' && !options.useTurnWrappers) return []
       return [
@@ -246,6 +264,24 @@ describe('thinking macro DOM send two-stage protocol', () => {
     const other = mockDom({ connectionBanner: true })
     const prep = await runInNewContext(prepare('resume'), other.context)
     expect(prep.reason).toBe('disconnected-banner')
+  })
+  it('identifies new app-shell semantic blocks without authorizing real Send', async () => {
+    const test = mockDom({ newAppShell: true })
+    const observation = runInNewContext(CHAT_WATCH_INSPECT_SCRIPT, test.context)
+    expect(observation.roleSource).toBe('semantic-content')
+    expect(observation.assistantCount).toBe(1)
+    expect(observation.userCount).toBe(1)
+    expect(observation.lastMessageRole).toBe('assistant')
+    expect(observation.selectorProbe.appShellPresent).toBe(true)
+    expect(observation.selectorProbe.legacyTurns).toBe(0)
+    expect(observation.selectorProbe.semanticAssistantBlocks).toBe(1)
+    expect(observation.selectorProbe.semanticUserBlocks).toBe(1)
+    const prepared = await runInNewContext(prepare('resume'), test.context)
+    expect(prepared.prepared).toBe(false)
+    expect(prepared.reason).toBe('no-completed-assistant-response')
+    const outcome = runInNewContext(commit('resume'), test.context)
+    expect(outcome.clicked).toBe(false)
+    expect(test.getClicks()).toBe(0)
   })
   it('does not evaluate prompt content as JavaScript', async () => {
     const test = mockDom()

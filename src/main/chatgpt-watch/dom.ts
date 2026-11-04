@@ -7,28 +7,60 @@ const NIGHTNOVA_MESSAGE_HELPERS = String.raw`
       // Prefer complete chronological turn wrappers. A recognized earlier
       // assistant must not conceal a newer turn with an unknown role.
       const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'))
-      const direct = turns.length ? [] : Array.from(document.querySelectorAll('[data-message-author-role]'))
-      const source = turns.length ? 'turn-role' : direct.length ? 'message-author-role' : 'unknown'
-      const nodes = turns.length ? turns : direct
+      const hyphenated = turns.length ? [] :
+        Array.from(document.querySelectorAll('[data-test-id^="conversation-turn-"]'))
+      const keyed = turns.length || hyphenated.length ? [] :
+        Array.from(document.querySelectorAll('[data-turn-key]'))
+      const direct = turns.length || hyphenated.length || keyed.length ? [] :
+        Array.from(document.querySelectorAll('[data-message-author-role]'))
+      // Some variants name the role attribute differently, but its VALUE must
+      // still identify a user or assistant. Never infer roles from CSS position.
+      const alternate = turns.length || hyphenated.length || keyed.length || direct.length ? [] :
+        Array.from(document.querySelectorAll('[data-author-role], [data-conversation-role], [data-turn-role], [data-message-author]'))
+      // 2026 app-shell sometimes removes all turn wrappers. Semantic content
+      // markers are DIAGNOSTIC ONLY: they are not proof of complete turns.
+      const semantic = turns.length || hyphenated.length || keyed.length || direct.length || alternate.length ? [] :
+        Array.from(document.querySelectorAll('[data-user-message-bubble="true"], [data-markdown-text-style="assistant-message"]'))
+      const source = turns.length || hyphenated.length || keyed.length ? 'turn-role' :
+        direct.length ? 'message-author-role' : alternate.length ? 'author-role' :
+        semantic.length ? 'semantic-content' : 'unknown'
+      const nodes = turns.length ? turns : hyphenated.length ? hyphenated :
+        keyed.length ? keyed : direct.length ? direct : alternate.length ? alternate : semantic
+      const probe = {
+        legacyTurns: turns.length,
+        hyphenatedTurns: hyphenated.length,
+        keyedTurns: keyed.length,
+        explicitRoleNodes: direct.length + alternate.length,
+        semanticUserBlocks: semantic.filter(el => el.getAttribute('data-user-message-bubble') === 'true').length,
+        semanticAssistantBlocks: semantic.filter(el => el.getAttribute('data-markdown-text-style') === 'assistant-message').length,
+        appShellPresent: !!document.querySelector('[data-app-shell-main-content-layout], [data-thread-user-message-navigation-content], [data-thread-find-target="conversation"]')
+      }
       const roleOf = (el) => {
         const explicit = el.getAttribute('data-message-author-role') ||
           el.getAttribute('data-author-role') || el.getAttribute('data-role') ||
-          el.getAttribute('data-turn-role')
+          el.getAttribute('data-turn-role') || el.getAttribute('data-turn') ||
+          el.getAttribute('data-conversation-role') || el.getAttribute('data-message-author')
         if (explicit === 'assistant' || explicit === 'user') return explicit
-        const testId = el.getAttribute('data-testid') || ''
+        const testId = el.getAttribute('data-testid') || el.getAttribute('data-test-id') || ''
         if (/^conversation-turn-assistant(?:-|$)/i.test(testId)) return 'assistant'
         if (/^conversation-turn-user(?:-|$)/i.test(testId)) return 'user'
-        // Some Work pages expose the role on the *inner* turn wrapper.
-        const child = el.querySelector?.('[data-author-role], [data-message-author-role], [data-turn-role]')
+        // A semantic content element may describe visible text without a
+        // complete turn. It will never authorize live Send.
+        if (el.getAttribute('data-user-message-bubble') === 'true') return 'user'
+        if (el.getAttribute('data-markdown-text-style') === 'assistant-message') return 'assistant'
+        // Some Work pages expose the role only on an inner turn wrapper.
+        const child = el.querySelector?.('[data-author-role], [data-message-author-role], [data-turn-role], [data-conversation-role], [data-turn], [data-message-author]')
         const nested = child?.getAttribute('data-message-author-role') ||
-          child?.getAttribute('data-author-role') || child?.getAttribute('data-turn-role')
+          child?.getAttribute('data-author-role') || child?.getAttribute('data-turn-role') ||
+          child?.getAttribute('data-conversation-role') || child?.getAttribute('data-turn') ||
+          child?.getAttribute('data-message-author')
         return nested === 'assistant' || nested === 'user' ? nested : 'unknown'
       }
       const resolved = nodes.filter(el => roleOf(el) !== 'unknown')
       const assistant = resolved.filter(el => roleOf(el) === 'assistant')
       const user = resolved.filter(el => roleOf(el) === 'user')
       const lastRole = nodes.length ? roleOf(nodes[nodes.length - 1]) : 'unknown'
-      return { source, nodes, assistant, user, lastRole,
+      return { source, nodes, assistant, user, lastRole, probe,
         unresolvedMessageCount: nodes.length - resolved.length }
     }
 `;
@@ -60,6 +92,7 @@ export const CHAT_WATCH_INSPECT_SCRIPT = String.raw`(() => {
     unresolvedMessageCount: messages.unresolvedMessageCount,
     lastMessageRole: lastRole === 'user' || lastRole === 'assistant' ? lastRole : 'unknown',
     roleSource,
+    selectorProbe: messages.probe,
     lastAssistantText: last ? (last.innerText || last.textContent || '').slice(-4000) : '',
     generating,
     online: navigator.onLine,
@@ -97,7 +130,8 @@ export function chatWatchPrepareScript(
     if (!editor || (stop && !stop.disabled)) return { prepared: false, reason: 'busy-or-missing-editor' }
     ${NIGHTNOVA_MESSAGE_HELPERS}
     const before = readMessages()
-    if (!before.nodes.length || before.unresolvedMessageCount > 0 || before.lastRole !== 'assistant') {
+    if (!before.nodes.length || before.source === 'semantic-content' || before.source === 'unknown' ||
+        before.unresolvedMessageCount > 0 || before.lastRole !== 'assistant') {
       return { prepared: false, reason: 'no-completed-assistant-response' }
     }
     // Authentication/verification and offline transitions always block
@@ -162,7 +196,7 @@ export function chatWatchPrepareScript(
 export function chatWatchCommitScript(
   prompt: string, expectedUrl: string, operationId: string, deadlineAt: number,
   expectedAssistantCount: number, expectedUserCount: number, expectedAssistantText: string,
-  expectedRoleSource: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'unknown' = 'message-author-role'
+  expectedRoleSource: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'semantic-content' | 'unknown' = 'message-author-role'
 ): string {
   return String.raw`(() => {
     const message = ${JSON.stringify(prompt)}
@@ -180,7 +214,8 @@ export function chatWatchCommitScript(
     const stop = document.querySelector('[data-testid="stop-button"], button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="응답 중지"]')
     ${NIGHTNOVA_MESSAGE_HELPERS}
     const messages = readMessages()
-    if (messages.unresolvedMessageCount > 0 || messages.lastRole !== 'assistant') {
+    if (messages.source === 'semantic-content' || messages.source === 'unknown' ||
+        messages.unresolvedMessageCount > 0 || messages.lastRole !== 'assistant') {
       return { clicked: false, reason: 'conversation-changed' }
     }
     if (messages.source !== ${JSON.stringify(expectedRoleSource)} ||

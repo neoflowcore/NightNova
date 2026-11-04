@@ -164,6 +164,16 @@ export interface ChatWatchLog {
   message: string
 }
 
+/** Selector counts only: no URLs, private messages, tokens, selectors' values or cookies. */
+export interface ChatWatchSelectorProbe {
+  legacyTurns: number
+  hyphenatedTurns: number
+  keyedTurns: number
+  explicitRoleNodes: number
+  semanticUserBlocks: number
+  semanticAssistantBlocks: number
+  appShellPresent: boolean
+}
 export interface ChatWatchPageStatus {
   assistantCount: number
   userCount: number
@@ -178,7 +188,9 @@ export interface ChatWatchPageStatus {
   /** The most recent DOM message role, not inferred from message counts. */
   lastMessageRole?: 'user' | 'assistant' | 'unknown'
   /** Safe selector-family diagnostic: no transcript or prompt contents. */
-  roleSource?: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'unknown'
+  roleSource?: 'message-author-role' | 'turn-role' | 'author-role' | 'data-role' | 'semantic-content' | 'unknown'
+  /** Bounded diagnostic counters from the currently displayed DOM. */
+  selectorProbe?: ChatWatchSelectorProbe
 }
 
 /** Persist only bounded action counters, never a URL, conversation or prompt. */

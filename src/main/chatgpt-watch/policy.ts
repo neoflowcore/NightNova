@@ -114,6 +114,14 @@ export function decideChatWatch(
   if (!page.assistantCount) return ctx.readOnly
     ? { type: 'wait', reason: '모의실행: ChatGPT 응답 DOM 구조를 아직 인식하지 못했습니다. 전송은 차단한 채 다시 검사합니다.' }
     : { type: 'needs-human', reason: '기존 ChatGPT 응답이 없습니다. 먼저 직접 대화를 시작해야 합니다.' }
+  // A semantic content block is not a verified turn. In 2026's app-shell
+  // several paragraphs can belong to one response and hidden older turns
+  // may be virtualized. It is useful for read-only diagnosis, NEVER Send.
+  if (page.roleSource === 'semantic-content') {
+    return ctx.readOnly
+      ? { type: 'wait', reason: '모의실행: 새 ChatGPT 화면에서 가시 콘텐츠를 발견했습니다. 메시지 경계는 미확인이라 실제 전송은 금지합니다.' }
+      : { type: 'needs-human', reason: 'ChatGPT 새 화면의 메시지 경계가 검증되지 않아 실제 전송을 중단합니다.' }
+  }
   if ((page.unresolvedMessageCount ?? 0) > 0) {
     return ctx.readOnly
       ? { type: 'wait', reason: '모의실행: 역할을 확인하지 못한 메시지가 있어 전송하지 않고 관찰합니다.' }

@@ -215,6 +215,10 @@ export class ChatGptConversationWatch {
     const value = raw as ChatWatchDomObservation
     if (!sameConversation(value.url, guest.getURL())) throw new Error('대화 주소가 읽는 도중 변경됐습니다.')
     if (!Number.isSafeInteger(value.assistantCount) || !Number.isSafeInteger(value.userCount) ||
+        (value.selectorProbe !== undefined &&
+          (typeof value.selectorProbe.appShellPresent !== 'boolean' ||
+           Object.entries(value.selectorProbe).some(([key, count]) =>
+             key !== 'appShellPresent' && (!Number.isSafeInteger(count) || Number(count) < 0 || Number(count) > 100_000)))) ||
         typeof value.lastAssistantText !== 'string' ||
         (value.unresolvedMessageCount !== undefined &&
           (!Number.isSafeInteger(value.unresolvedMessageCount) || value.unresolvedMessageCount < 0)) ||
@@ -225,9 +229,9 @@ export class ChatGptConversationWatch {
   }
 
   private updatePage(observation: ChatWatchDomObservation): void {
-    const { assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource } = observation
+    const { assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource, selectorProbe } = observation
     this.stateData.page = {
-      assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource
+      assistantCount, userCount, unresolvedMessageCount, generating, online, connectionProblem, composerReady, hasDraft, lastMessageRole, roleSource, selectorProbe
     }
     this.stateData.lastCheckAt = Date.now()
     this.notify()
@@ -258,6 +262,10 @@ export class ChatGptConversationWatch {
     // Epoch alone is sufficient; checking a narrowed status triggers TS2367.
     if (this.epoch !== requestedEpoch) {
       throw new Error('감독 준비 중 상태가 변경됐습니다. 현재 상태를 다시 확인하세요.')
+    }
+    if (!this.stateData.config.readOnly &&
+        (page.roleSource === 'semantic-content' || page.roleSource === 'unknown')) {
+      throw new Error('ChatGPT 대화 메시지 경계를 판독하지 못했습니다. 실제 전송은 차단됩니다. 모의실행에서 상태 확인을 사용하세요.')
     }
     if ((page.needsLogin || page.challenge) || (!page.assistantCount && !this.stateData.config.readOnly)) {
       throw new Error('로그인된 ChatGPT 대화에서 AI 답변이 한 번 이상 표시돼야 합니다. 답변 완료 후 상태 확인을 눌러주세요.')
@@ -372,7 +380,8 @@ export class ChatGptConversationWatch {
     const page = await this.inspectGuest(this.guest(id))
     this.updatePage(page)
     this.addLog('info', '대화 화면 진단: 응답 ' + page.assistantCount +
-      '개, 생성 중=' + String(page.generating) + ', 입력창=' + String(page.composerReady))
+      '개, 방식=' + String(page.roleSource ?? 'unknown') +
+      ', 생성 중=' + String(page.generating) + ', 입력창=' + String(page.composerReady))
     return this.state()
   }
 
@@ -477,7 +486,8 @@ export class ChatGptConversationWatch {
   ): Promise<void> {
     // Re-inspect the displayed tab, role, fingerprint, draft and generation
     // immediately before any irreversible action.
-    if (!this.isArmed(epoch, wc.id)) return
+    if (!this.isArmed(epoch, wc.id) ||
+        expected.roleSource === 'semantic-content' || expected.roleSource === 'unknown') return
     const fresh = await this.inspectGuest(this.activeGuest())
     if (!this.isArmed(epoch, wc.id) || fingerprint(fresh) !== fingerprint(expected) ||
         (fresh.unresolvedMessageCount ?? 0) > 0 ||

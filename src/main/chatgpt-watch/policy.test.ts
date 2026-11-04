@@ -67,6 +67,15 @@ describe('ChatGPT supervisor configurable stop categories', () => {
     expect(isChatGptConversation(pageUrl)).toBe(true)
     expect(isChatGptConversation('https://chatgpt.com:444/c/12345678-abcd-1234-efab-123456789012')).toBe(false)
   })
+  it('does not convert semantic-only app-shell blocks into actual Send permission', () => {
+    const page = { ...base, roleSource: 'semantic-content' as const,
+      selectorProbe: { legacyTurns: 0, hyphenatedTurns: 0, keyedTurns: 0,
+        explicitRoleNodes: 0, semanticAssistantBlocks: 1, semanticUserBlocks: 1,
+        appShellPresent: true } }
+    expect(decideChatWatch(page, {...context, readOnly: true}).type).toBe('wait')
+    expect(decideChatWatch(page, {...context, readOnly: true}).reason).toContain('모의실행')
+    expect(decideChatWatch(page, {...context, readOnly: false}).type).toBe('needs-human')
+  })
   it('fails closed if the latest message role cannot be verified', () => {
     expect(decideChatWatch({ ...base, lastMessageRole: 'unknown' }, context).type).toBe('needs-human')
   })

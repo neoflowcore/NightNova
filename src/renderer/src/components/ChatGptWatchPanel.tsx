@@ -121,7 +121,8 @@ export function ChatGptWatchPanel({ tabs, webContentsId }: { tabs: Tab[]; webCon
         {snap?.page && (snap.page.unresolvedMessageCount ?? 0) > 0 && <p role="alert" className="nightnova-error">최근 대화 메시지 역할이 불명확합니다. 안전을 위해 실제 자동 전송을 중단하며, 상태 확인으로 진단하세요.</p>}
         {snap?.page?.connectionProblem && <p role="alert" className="nightnova-error">ChatGPT 화면에 연결 해제 또는 네트워크 오류가 표시됐습니다. 실제 자동 전송을 중단합니다.</p>}
         {snap?.status === 'watching' && snap.startedAt !== null && <p className="nightnova-wb-note">야간 감독 남은 시간: {formatWatchDuration(chatWatchRunRemainingSeconds(clock, snap.startedAt, snap.config.maxRunSeconds) ?? 0)}</p>}
-        {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
+        {snap?.page && <p className="nightnova-wb-note">마지막 메시지: {snap.page.roleSource === 'semantic-content' ? '가시 콘텐츠 기준(확정 불가)' :
+          snap.page.lastMessageRole === "user" ? "사용자 · 답변 대기" : snap.page.lastMessageRole === "assistant" ? "AI 응답" : "판독 중"} · {snap.page.generating ? "생성 중" : "생성 표시 없음"} · {snap.page.hasDraft ? "미전송 초안 있음" : "초안 없음"}</p>}
         {snap?.lastDecision && <p role="status" className="nightnova-wb-note">판단: {snap.lastDecision.reason}</p>}
         {snap?.lastProgressAt && <p className="nightnova-wb-note">마지막 진행: {new Date(snap.lastProgressAt).toLocaleTimeString()} · 최근 검사: {snap.lastCheckAt ? new Date(snap.lastCheckAt).toLocaleTimeString() : '없음'}</p>}
         {snap?.status === 'watching' && (() => {
