@@ -3,13 +3,6 @@ name: NightNova Windows Portable Manual Release
 # No push, schedule or pull_request triggers.
 on:
   workflow_dispatch:
-  # Explicitly authorized one-shot Windows EXE for current manual verification.
-  # This trigger exists ONLY on this isolated branch; main remains manual-only.
-  push:
-    branches:
-      - nightnova-appshell-acceptance-20261105-one-shot
-    paths:
-      - .github/workflows/nightnova-windows-portable.yml
 
 permissions:
   contents: read
@@ -65,5 +58,5 @@ jobs:
             release/NightNova-*-portable.exe
             release/NIGHTNOVA_PORTABLE_MANIFEST.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
           compression-level: 0
